@@ -26,5 +26,8 @@ class BackendClient {
   Future<Response> post(String path, {dynamic data}) =>
       _dio.post('$baseUrl$path', data: data);
 
+  Future<Response> put(String path, {dynamic data}) =>
+      _dio.put('$baseUrl$path', data: data);
+
   Future<Response> delete(String path) => _dio.delete('$baseUrl$path');
 }
