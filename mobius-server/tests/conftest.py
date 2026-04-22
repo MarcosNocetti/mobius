@@ -2,7 +2,7 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from app.models.base import Base
-from app.models import user  # noqa: F401 — registers User with Base
+from app.models import user, conversation  # noqa: F401 — ensures tables registered with Base
 from app.core.database import get_session
 from app.main import app
 
