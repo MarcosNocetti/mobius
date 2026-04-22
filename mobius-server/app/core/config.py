@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     TWITTER_CLIENT_ID: str = ""
     TWITTER_CLIENT_SECRET: str = ""
+    INSTAGRAM_APP_ID: str = ""
+    INSTAGRAM_APP_SECRET: str = ""
 
 
 settings = Settings()
