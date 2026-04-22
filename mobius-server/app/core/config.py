@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     BASE_URL: str = "http://localhost:8000"
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
+    TWITTER_CLIENT_ID: str = ""
+    TWITTER_CLIENT_SECRET: str = ""
 
 
 settings = Settings()
