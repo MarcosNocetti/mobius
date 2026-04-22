@@ -30,7 +30,14 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
             raw = await websocket.receive_text()
             payload = json.loads(raw)
             user_message = payload.get("message", "")
-            model = payload.get("model", "gemini/gemini-2.0-flash")
+            raw_model = payload.get("model", "gemini/gemini-2.0-flash")
+            # Normalize short model names to provider/model format for LiteLLM
+            _model_map = {
+                "gemini-flash": "gemini/gemini-2.0-flash",
+                "claude-sonnet": "anthropic/claude-sonnet-4-6",
+                "gpt-4o": "openai/gpt-4o",
+            }
+            model = _model_map.get(raw_model, raw_model)
 
             # Persist conversation + user message
             async with AsyncSessionLocal() as session:

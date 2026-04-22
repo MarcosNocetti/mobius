@@ -10,6 +10,13 @@ extension AiModelLabel on AiModel {
         AiModel.claudeSonnet => 'claude-sonnet',
         AiModel.gpt4o => 'gpt-4o',
       };
+
+  // Provider key used by the server's /auth/api-keys endpoint
+  String get providerKey => switch (this) {
+        AiModel.geminiFlash => 'gemini',
+        AiModel.claudeSonnet => 'anthropic',
+        AiModel.gpt4o => 'openai',
+      };
 }
 
 class SettingsState {
@@ -52,10 +59,22 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(selectedModel: model);
   }
 
-  void setApiKey(AiModel model, String key) {
+  Future<void> setApiKey(AiModel model, String key) async {
     final updated = Map<AiModel, String>.from(state.apiKeys);
     updated[model] = key;
     state = state.copyWith(apiKeys: updated);
+    // Persist to server so the WebSocket handler can use it
+    if (key.isNotEmpty) {
+      try {
+        final client = ref.read(backendClientProvider);
+        await client.put('/auth/api-keys', data: {
+          'provider': model.providerKey,
+          'key': key,
+        });
+      } catch (_) {
+        // Silently fail — will retry on next save
+      }
+    }
   }
 
   bool hasApiKey(AiModel model) => state.apiKeys.containsKey(model) &&

@@ -78,7 +78,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     labelText: '${model.label} API Key',
                   ),
                   obscureText: true,
-                  onChanged: (key) => notifier.setApiKey(model, key),
+                  onChanged: (key) => notifier.setApiKey(model, key).ignore(),
                 ),
               )),
           const SizedBox(height: 24),
