@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
 import 'typing_indicator.dart';
+import '../settings/settings_provider.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -65,6 +66,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 },
               ),
             ),
+          ),
+          Consumer(
+            builder: (context, ref, _) {
+              final settings = ref.watch(settingsNotifierProvider);
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Row(
+                  children: AiModel.values.map((model) {
+                    final hasKey = settings.apiKeys.containsKey(model) &&
+                        settings.apiKeys[model]!.isNotEmpty;
+                    final isSelected = _selectedModel == model.label;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: Text(model.label),
+                        selected: isSelected,
+                        onSelected: hasKey
+                            ? (selected) {
+                                if (selected) {
+                                  setState(() => _selectedModel = model.label);
+                                }
+                              }
+                            : null,
+                        avatar: hasKey ? null : const Icon(Icons.lock, size: 14),
+                        selectedColor: const Color(0xFF00B4D8),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+            },
           ),
           Padding(
             padding: const EdgeInsets.all(12),
