@@ -24,8 +24,8 @@ class WebSocketService {
 
   Stream<WsEvent> get stream => _controller.stream;
 
-  void connect(String serverHost, String token) {
-    final uri = Uri.parse('ws://$serverHost/ws/chat?token=$token');
+  void connect(String serverHost, String token, {String scheme = 'ws'}) {
+    final uri = Uri.parse('$scheme://$serverHost/ws/chat?token=$token');
     _channel = channelFactory != null
         ? channelFactory!(uri)
         : WebSocketChannel.connect(uri);

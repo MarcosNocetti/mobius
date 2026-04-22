@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/storage.dart';
 import '../../services/websocket_service.dart';
 import '../../shared/models/message.dart';
 
@@ -11,20 +12,37 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
 final isStreamingProvider = StateProvider<bool>((ref) => false);
 
 class ChatNotifier extends AsyncNotifier<List<Message>> {
+  bool _connected = false;
+
   @override
   Future<List<Message>> build() async => [];
 
+  Future<void> _ensureConnected() async {
+    if (_connected) return;
+    final storage = AppStorage();
+    final token = await storage.getToken() ?? '';
+    final serverUrl = await storage.getServerUrl();
+    // Convert http(s):// to ws(s)://
+    final uri = Uri.parse(serverUrl);
+    final wsScheme = uri.scheme == 'https' ? 'wss' : 'ws';
+    final host = uri.port != 80 && uri.port != 443
+        ? '${uri.host}:${uri.port}'
+        : uri.host;
+    final ws = ref.read(webSocketServiceProvider);
+    ws.connect(host, token, scheme: wsScheme);
+    _connected = true;
+  }
+
   Future<void> sendMessage(String text, String model) async {
+    await _ensureConnected();
     final ws = ref.read(webSocketServiceProvider);
     final current = state.value ?? [];
 
-    // Add user message
     final userMsg = Message(role: 'user', content: text, timestamp: DateTime.now());
     state = AsyncValue.data([...current, userMsg]);
 
     ref.read(isStreamingProvider.notifier).state = true;
 
-    // Placeholder assistant message
     var assistantContent = '';
     final assistantMsg = Message(role: 'assistant', content: '', timestamp: DateTime.now());
     state = AsyncValue.data([...(state.value ?? []), assistantMsg]);
