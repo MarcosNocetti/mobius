@@ -1,14 +1,12 @@
-import asyncio
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from jose import JWTError
 from app.core.security import decode_token
 from app.core.database import AsyncSessionLocal
 from app.models.conversation import Conversation, Message
+from app.agents.engine import run_agent
 
 router = APIRouter()
-
-MOCK_RESPONSE = "Hello from Mobius! I am your AI assistant ready to help."
 
 
 @router.websocket("/ws/chat")
@@ -27,6 +25,7 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
             raw = await websocket.receive_text()
             payload = json.loads(raw)
             user_message = payload.get("message", "")
+            model = payload.get("model", "gemini/gemini-2.0-flash")
 
             # Persist conversation + user message
             async with AsyncSessionLocal() as session:
@@ -37,21 +36,27 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
                 await session.commit()
                 conv_id = conv.id
 
-            # Stream mock response word by word
-            words = MOCK_RESPONSE.split()
-            full_response = []
-            for word in words:
-                chunk = word + " "
-                full_response.append(chunk)
+            # Stream LLM response
+            full_response_parts = []
+
+            async def send_token(chunk: str):
+                full_response_parts.append(chunk)
                 await websocket.send_text(json.dumps({"type": "token", "content": chunk}))
-                await asyncio.sleep(0.05)
+
+            await run_agent(
+                message=user_message,
+                model=model,
+                api_key=None,  # Task 11 will thread user key here
+                tools=[],
+                on_token=send_token,
+            )
 
             # Persist assistant message
             async with AsyncSessionLocal() as session:
                 session.add(Message(
                     conversation_id=conv_id,
                     role="assistant",
-                    content="".join(full_response).strip()
+                    content="".join(full_response_parts).strip()
                 ))
                 await session.commit()
 
