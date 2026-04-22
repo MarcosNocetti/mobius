@@ -42,6 +42,8 @@ class WebSocketService {
       final json = jsonDecode(raw as String) as Map<String, dynamic>;
       if (json['type'] == 'token') {
         _controller.add(TokenEvent(json['content'] as String));
+      } else if (json['type'] == 'error') {
+        _controller.add(TokenEvent('[Erro] ${json['content']}'));
       } else if (json['type'] == 'done') {
         _controller.add(DoneEvent());
       }
