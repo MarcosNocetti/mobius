@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_provider.dart';
 import 'features/auth/login_screen.dart';
+import 'features/chat/chat_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authNotifierProvider);
@@ -24,9 +25,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/chat',
-        builder: (context, state) => const Scaffold(
-          body: Center(child: Text('Chat placeholder')),
-        ),
+        builder: (context, state) => const ChatScreen(),
       ),
     ],
   );
