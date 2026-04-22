@@ -1,9 +1,10 @@
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from jose import JWTError
-from app.core.security import decode_token
+from app.core.security import decode_token, decrypt_api_key
 from app.core.database import AsyncSessionLocal
 from app.models.conversation import Conversation, Message
+from app.models.user import User as UserModel
 from app.agents.engine import run_agent
 
 router = APIRouter()
@@ -19,6 +20,10 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
         return
 
     await websocket.accept()
+
+    # Load user from DB to get their API keys
+    async with AsyncSessionLocal() as session:
+        db_user = await session.get(UserModel, user_id)
 
     try:
         while True:
@@ -36,6 +41,12 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
                 await session.commit()
                 conv_id = conv.id
 
+            # Resolve user API key for the requested provider
+            provider = model.split("/")[0] if "/" in model else "gemini"
+            user_key = None
+            if db_user and db_user.api_keys and provider in db_user.api_keys:
+                user_key = decrypt_api_key(db_user.api_keys[provider])
+
             # Stream LLM response
             full_response_parts = []
 
@@ -46,7 +57,7 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
             await run_agent(
                 message=user_message,
                 model=model,
-                api_key=None,  # Task 11 will thread user key here
+                api_key=user_key,
                 tools=[],
                 on_token=send_token,
             )

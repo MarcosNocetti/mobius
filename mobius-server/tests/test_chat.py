@@ -72,6 +72,7 @@ async def test_ws_streams_tokens(client):
         mock_session.flush = AsyncMock()
         mock_session.commit = AsyncMock()
         mock_session.add = MagicMock()
+        mock_session.get = AsyncMock(return_value=None)
         mock_conv = MagicMock()
         mock_conv.id = "test-conv-id"
         mock_session.flush.side_effect = lambda: setattr(mock_conv, 'id', 'test-conv-id')

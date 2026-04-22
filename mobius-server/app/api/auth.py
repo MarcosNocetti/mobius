@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
+from jose import JWTError
 from app.core.database import get_session
-from app.core.security import hash_password, verify_password, create_token
+from app.core.security import hash_password, verify_password, create_token, encrypt_api_key, decrypt_api_key, decode_token
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+bearer = HTTPBearer()
 
 
 class RegisterRequest(BaseModel):
@@ -47,3 +50,41 @@ async def token(body: TokenRequest, session: AsyncSession = Depends(get_session)
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return TokenResponse(access_token=create_token(user.id))
+
+
+async def get_current_user(
+    creds: HTTPAuthorizationCredentials = Depends(bearer),
+    session: AsyncSession = Depends(get_session),
+) -> User:
+    try:
+        user_id = decode_token(creds.credentials)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+class ApiKeyRequest(BaseModel):
+    provider: str
+    key: str
+
+
+@router.put("/api-keys")
+async def store_api_key(
+    body: ApiKeyRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    keys = user.api_keys or {}
+    keys[body.provider] = encrypt_api_key(body.key)
+    user.api_keys = keys
+    session.add(user)
+    await session.commit()
+    return {"status": "stored"}
+
+
+@router.get("/api-keys")
+async def list_api_keys(user: User = Depends(get_current_user)):
+    return {"providers": list((user.api_keys or {}).keys())}
