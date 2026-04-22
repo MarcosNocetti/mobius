@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     BASE_URL: str = "http://localhost:8000"
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
 
 
 settings = Settings()
