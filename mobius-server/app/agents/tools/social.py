@@ -1,5 +1,6 @@
 from app.integrations.twitter import post_tweet as _post_tweet
 from app.integrations.instagram import post_photo as _post_photo
+from app.integrations.linkedin import post_linkedin as _post_linkedin
 
 
 async def post_twitter_tool(user_id: str, text: str) -> str:
@@ -13,3 +14,9 @@ async def post_instagram_tool(user_id: str, image_url: str, caption: str) -> str
     """Post a photo to Instagram. Returns media ID."""
     result = await _post_photo(user_id, image_url, caption)
     return f"Instagram post created: {result.get('id')}"
+
+
+async def post_linkedin_tool(user_id: str, text: str) -> str:
+    """Post to LinkedIn. Returns share ID."""
+    result = await _post_linkedin(user_id, text)
+    return f"LinkedIn post created: {result.get('id')}"

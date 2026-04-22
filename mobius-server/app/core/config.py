@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     TWITTER_CLIENT_SECRET: str = ""
     INSTAGRAM_APP_ID: str = ""
     INSTAGRAM_APP_SECRET: str = ""
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+    NOTION_CLIENT_ID: str = ""
+    NOTION_CLIENT_SECRET: str = ""
 
 
 settings = Settings()
