@@ -1,28 +1,47 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'core/theme.dart';
+import 'features/auth/auth_provider.dart';
+import 'features/auth/login_screen.dart';
 
-final _router = GoRouter(
-  initialLocation: '/chat',
-  routes: [
-    GoRoute(
-      path: '/chat',
-      builder: (context, state) => const Scaffold(
-        body: Center(child: Text('Chat placeholder')),
+final routerProvider = Provider<GoRouter>((ref) {
+  final authState = ref.watch(authNotifierProvider);
+
+  return GoRouter(
+    initialLocation: '/chat',
+    redirect: (context, state) {
+      final isLoggedIn = authState.valueOrNull == AuthState.authenticated;
+      final isGoingToLogin = state.matchedLocation == '/login';
+      if (!isLoggedIn && !isGoingToLogin) return '/login';
+      if (isLoggedIn && isGoingToLogin) return '/chat';
+      return null;
+    },
+    routes: [
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
       ),
-    ),
-  ],
-);
+      GoRoute(
+        path: '/chat',
+        builder: (context, state) => const Scaffold(
+          body: Center(child: Text('Chat placeholder')),
+        ),
+      ),
+    ],
+  );
+});
 
-class MobiusApp extends StatelessWidget {
+class MobiusApp extends ConsumerWidget {
   const MobiusApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(routerProvider);
     return MaterialApp.router(
       title: 'Mobius',
       theme: mobiusTheme,
-      routerConfig: _router,
+      routerConfig: router,
       debugShowCheckedModeBanner: false,
     );
   }
