@@ -9,6 +9,14 @@ class AuthService {
       : _client = client,
         _storage = storage ?? AppStorage();
 
+  Future<void> register(String email, String password) async {
+    await _client.post('/auth/register', data: {
+      'email': email,
+      'password': password,
+    });
+    await login(email, password);
+  }
+
   Future<void> login(String email, String password) async {
     final response = await _client.post('/auth/token', data: {
       'email': email,

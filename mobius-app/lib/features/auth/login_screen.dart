@@ -13,6 +13,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _isSignUp = false;
   String? _error;
 
   @override
@@ -25,10 +26,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     setState(() => _error = null);
     try {
-      await ref.read(authNotifierProvider.notifier).login(
-            _emailController.text.trim(),
-            _passwordController.text,
-          );
+      final notifier = ref.read(authNotifierProvider.notifier);
+      if (_isSignUp) {
+        await notifier.register(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+      } else {
+        await notifier.login(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+      }
       if (mounted) context.go('/chat');
     } catch (e) {
       setState(() => _error = e.toString());
@@ -51,6 +60,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const Text(
                 'Mobius',
                 style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _isSignUp ? 'Create an account' : 'Welcome back',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
@@ -79,7 +94,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Sign In'),
+                    : Text(_isSignUp ? 'Sign Up' : 'Sign In'),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: isLoading
+                    ? null
+                    : () => setState(() {
+                          _isSignUp = !_isSignUp;
+                          _error = null;
+                        }),
+                child: Text(
+                  _isSignUp
+                      ? 'Already have an account? Sign In'
+                      : "Don't have an account? Sign Up",
+                ),
               ),
             ],
           ),
