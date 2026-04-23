@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from app.core.redis import redis_client as _redis
 from jose import JWTError
+from app.core.config import settings
 from app.core.security import decode_token, decrypt_api_key
 from app.core.database import AsyncSessionLocal
 from app.models.conversation import Conversation, Message
