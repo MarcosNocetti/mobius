@@ -15,6 +15,8 @@ class BackendClient {
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         }
+        // Skip ngrok browser warning page
+        options.headers['ngrok-skip-browser-warning'] = 'true';
         handler.next(options);
       },
     ));

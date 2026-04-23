@@ -5,7 +5,7 @@ import '../../services/backend_client.dart';
 enum AuthState { unknown, authenticated, unauthenticated }
 
 final authServiceProvider = Provider<AuthService>((ref) {
-  return AuthService(client: BackendClient(baseUrl: 'http://localhost:8000'));
+  return AuthService(client: BackendClient(baseUrl: 'https://7c48-187-180-165-150.ngrok-free.app'));
 });
 
 class AuthNotifier extends AsyncNotifier<AuthState> {

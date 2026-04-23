@@ -1,3 +1,6 @@
+import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI

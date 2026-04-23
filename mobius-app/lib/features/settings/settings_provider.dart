@@ -25,7 +25,7 @@ class SettingsState {
   final Map<AiModel, String> apiKeys;
 
   const SettingsState({
-    this.serverUrl = 'http://localhost:8000',
+    this.serverUrl = 'https://7c48-187-180-165-150.ngrok-free.app',
     this.selectedModel = AiModel.geminiFlash,
     this.apiKeys = const {},
   });
@@ -43,7 +43,7 @@ class SettingsState {
 }
 
 final backendClientProvider = Provider<BackendClient>((ref) {
-  return BackendClient(baseUrl: 'http://localhost:8000');
+  return BackendClient(baseUrl: 'https://7c48-187-180-165-150.ngrok-free.app');
 });
 
 class SettingsNotifier extends Notifier<SettingsState> {
