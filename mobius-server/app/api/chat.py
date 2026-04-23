@@ -17,7 +17,7 @@ logger = logging.getLogger("mobius.chat")
 router = APIRouter()
 
 _MODEL_MAP = {
-    "gemini-flash": "gemini/gemini-2.0-flash",
+    "gemini-flash": "gemini/gemini-2.5-flash",
     "claude-sonnet": "anthropic/claude-sonnet-4-6",
     "gpt-4o": "openai/gpt-4o",
 }
@@ -58,7 +58,7 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
             raw = await websocket.receive_text()
             payload = json.loads(raw)
             user_message = payload.get("message", "")
-            raw_model = payload.get("model", "gemini/gemini-2.0-flash")
+            raw_model = payload.get("model", "gemini/gemini-2.5-flash")
             model = _MODEL_MAP.get(raw_model, raw_model)
 
             logger.info(f"[ws] message={user_message!r} model={model!r}")
