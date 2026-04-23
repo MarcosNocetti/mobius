@@ -88,3 +88,35 @@ async def store_api_key(
 @router.get("/api-keys")
 async def list_api_keys(user: User = Depends(get_current_user)):
     return {"providers": list((user.api_keys or {}).keys())}
+
+
+class TestKeyRequest(BaseModel):
+    provider: str
+    key: str
+
+
+@router.post("/api-keys/test")
+async def test_api_key(body: TestKeyRequest):
+    """Test an API key by sending a minimal prompt. Returns success or error."""
+    import litellm
+
+    model_map = {
+        "gemini": "gemini/gemini-2.0-flash",
+        "openai": "openai/gpt-4o",
+        "anthropic": "anthropic/claude-sonnet-4-6",
+    }
+    model = model_map.get(body.provider)
+    if not model:
+        return {"success": False, "error": f"Unknown provider: {body.provider}"}
+
+    try:
+        response = await litellm.acompletion(
+            model=model,
+            messages=[{"role": "user", "content": "Say OK"}],
+            api_key=body.key,
+            max_tokens=5,
+        )
+        reply = response.choices[0].message.content.strip()
+        return {"success": True, "reply": reply}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
