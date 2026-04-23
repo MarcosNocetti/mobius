@@ -1,10 +1,27 @@
 import json
 import logging
+import itertools
 from typing import Callable, Any, Awaitable
 import litellm
 from app.core.config import settings
 
 logger = logging.getLogger("mobius.engine")
+
+# Round-robin key rotation for Gemini free tier
+_key_cycle = None
+
+
+def _get_gemini_key() -> str:
+    """Get next Gemini API key from the rotation pool."""
+    global _key_cycle
+    keys_str = settings.GEMINI_API_KEYS
+    if keys_str:
+        keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+        if keys:
+            if _key_cycle is None:
+                _key_cycle = itertools.cycle(keys)
+            return next(_key_cycle)
+    return settings.GEMINI_API_KEY
 
 
 async def run_agent(
@@ -15,7 +32,7 @@ async def run_agent(
     on_token: Callable[[str], Awaitable[Any]],
 ) -> str:
     """Simple single-turn streaming (no tools)."""
-    effective_key = api_key or settings.GEMINI_API_KEY
+    effective_key = api_key or _get_gemini_key()
     logger.info(f"[engine] model={model!r} api_key={'SET' if effective_key else 'EMPTY'}")
 
     kwargs: dict[str, Any] = {
@@ -40,6 +57,32 @@ async def run_agent(
     return "".join(full_response)
 
 
+async def _call_with_retry(model: str, api_key: str | None, max_retries: int = 5, **kwargs):
+    """Call litellm.acompletion with key rotation on 429."""
+    last_err = None
+    # First try user key, then rotate through server keys
+    keys_to_try = []
+    if api_key:
+        keys_to_try.append(api_key)
+    keys_str = settings.GEMINI_API_KEYS
+    if keys_str:
+        for k in keys_str.split(","):
+            k = k.strip()
+            if k and k not in keys_to_try:
+                keys_to_try.append(k)
+    if not keys_to_try:
+        keys_to_try.append(settings.GEMINI_API_KEY)
+
+    for i, key in enumerate(keys_to_try[:max_retries]):
+        try:
+            return await litellm.acompletion(api_key=key, model=model, **kwargs)
+        except litellm.exceptions.RateLimitError as e:
+            logger.warning(f"[engine] key ...{key[-6:]} rate limited ({i+1}/{len(keys_to_try)})")
+            last_err = e
+            continue
+    raise last_err
+
+
 async def run_agent_with_tools(
     message: str,
     model: str,
@@ -52,7 +95,7 @@ async def run_agent_with_tools(
     Agentic loop: call LLM with tools, execute tool calls, feed results back.
     Streams the final text answer.
     """
-    effective_key = api_key or settings.GEMINI_API_KEY
+    effective_key = api_key
     messages = [{"role": "user", "content": message}]
 
     tool_schemas = [t["schema"] for t in tool_registry.values()]
@@ -61,15 +104,11 @@ async def run_agent_with_tools(
     logger.info(f"[engine] agent loop: model={model!r} tools={list(tool_fns.keys())}")
 
     for iteration in range(max_iterations):
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "api_key": effective_key,
-        }
+        extra = {}
         if tool_schemas:
-            kwargs["tools"] = tool_schemas
+            extra["tools"] = tool_schemas
 
-        response = await litellm.acompletion(**kwargs)
+        response = await _call_with_retry(model, effective_key, messages=messages, **extra)
         choice = response.choices[0]
 
         logger.info(f"[engine] finish_reason={choice.finish_reason!r} tool_calls={bool(choice.message.tool_calls)} content_len={len(choice.message.content or '')}")

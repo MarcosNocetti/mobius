@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     SECRET_KEY: str = "change-me-in-production-32-bytes!!"
     GEMINI_API_KEY: str = ""
+    GEMINI_API_KEYS: str = ""  # comma-separated list for rotation
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     BASE_URL: str = "http://localhost:8000"
     GOOGLE_CLIENT_ID: str = ""
