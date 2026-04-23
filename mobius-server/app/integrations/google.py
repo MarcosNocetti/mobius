@@ -48,7 +48,12 @@ async def exchange_code_for_tokens(code: str) -> dict:
 async def google_callback(code: str, state: str):
     tokens = await exchange_code_for_tokens(code)
     await redis_client.set(f"oauth:google:{state}", json.dumps(tokens))
-    return RedirectResponse(url="/setup")
+    html = """<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>body{background:#0a0a1a;color:#e0e0e0;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
+    .card{text-align:center;background:#1a1a2e;padding:3rem;border-radius:16px;border:2px solid #4ade80}
+    h1{color:#4ade80;font-size:2rem}p{color:#bbb;margin-top:1rem}</style></head>
+    <body><div class="card"><h1>✅ Google conectado!</h1><p>Pode fechar esta aba e voltar ao chat.</p></div></body></html>"""
+    return HTMLResponse(content=html)
 
 
 async def _get_access_token(user_id: str) -> str:

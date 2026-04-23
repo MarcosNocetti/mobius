@@ -2,6 +2,7 @@ import json
 import logging
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
+from app.core.redis import redis_client as _redis
 from jose import JWTError
 from app.core.security import decode_token, decrypt_api_key
 from app.core.database import AsyncSessionLocal
@@ -81,8 +82,19 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
                 await session.commit()
                 conv_id = conv.id
 
-            # Build tools with user_id bound
+            # Check Google connection status
+            google_connected = False
+            try:
+                google_raw = await _redis.get(f"oauth:google:{user_id}")
+                google_connected = bool(google_raw)
+            except Exception:
+                pass
+
+            # Build tools — only include Google tools if connected
             tool_registry = get_tools_for_user(user_id)
+            if not google_connected:
+                tool_registry = {k: v for k, v in tool_registry.items()
+                                 if k not in ("create_calendar_event", "send_gmail")}
 
             # Stream response
             full_response_parts = []
@@ -92,11 +104,20 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
                 await websocket.send_text(json.dumps({"type": "token", "content": chunk}))
 
             try:
+                base_url = settings.BASE_URL or "http://localhost:8000"
+                connect_url = f"{base_url}/connect/google?user_id={user_id}"
+                google_note = (
+                    "Google Calendar and Gmail are CONNECTED and ready to use."
+                    if google_connected
+                    else f"Google is NOT connected. If the user asks for calendar/email actions, "
+                         f"tell them to connect first by opening this link: {connect_url}"
+                )
                 system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
                     now=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 )
+                full_system = f"{system_prompt}\n\nGoogle status: {google_note}"
                 await run_agent_with_tools(
-                    message=f"{system_prompt}\n\nUser: {user_message}",
+                    message=f"{full_system}\n\nUser: {user_message}",
                     model=model,
                     api_key=user_key,
                     tool_registry=tool_registry,
