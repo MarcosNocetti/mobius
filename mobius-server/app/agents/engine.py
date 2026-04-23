@@ -14,12 +14,9 @@ async def run_agent(
     tools: list,
     on_token: Callable[[str], Awaitable[Any]],
 ) -> str:
+    """Simple single-turn streaming (no tools)."""
     effective_key = api_key or settings.GEMINI_API_KEY
-
     logger.info(f"[engine] model={model!r} api_key={'SET' if effective_key else 'EMPTY'}")
-
-    if not effective_key:
-        logger.warning("[engine] No API key available — call will likely fail")
 
     kwargs: dict[str, Any] = {
         "model": model,
@@ -29,19 +26,17 @@ async def run_agent(
     }
 
     full_response = []
-    token_count = 0
     try:
         async for chunk in await litellm.acompletion(**kwargs):
             delta = chunk.choices[0].delta.content
             if delta:
-                token_count += 1
-                await on_token(delta)          # ← was missing await
+                await on_token(delta)
                 full_response.append(delta)
     except Exception as e:
         logger.error(f"[engine] LiteLLM error: {e}")
         raise
 
-    logger.info(f"[engine] Done — {token_count} tokens")
+    logger.info(f"[engine] Done — {len(full_response)} chunks")
     return "".join(full_response)
 
 
@@ -49,26 +44,23 @@ async def run_agent_with_tools(
     message: str,
     model: str,
     api_key: str | None,
-    tools: dict[str, Any],
+    tool_registry: dict[str, dict],  # {name: {"fn": callable, "schema": dict}}
     on_token: Callable[[str], Awaitable[Any]],
     max_iterations: int = 5,
 ) -> str:
+    """
+    Agentic loop: call LLM with tools, execute tool calls, feed results back.
+    Streams the final text answer.
+    """
     effective_key = api_key or settings.GEMINI_API_KEY
     messages = [{"role": "user", "content": message}]
 
-    tool_schemas = [
-        {
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": fn.__doc__ or "",
-                "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
-            }
-        }
-        for name, fn in tools.items()
-    ]
+    tool_schemas = [t["schema"] for t in tool_registry.values()]
+    tool_fns = {name: t["fn"] for name, t in tool_registry.items()}
 
-    for _ in range(max_iterations):
+    logger.info(f"[engine] agent loop: model={model!r} tools={list(tool_fns.keys())}")
+
+    for iteration in range(max_iterations):
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -80,40 +72,60 @@ async def run_agent_with_tools(
         response = await litellm.acompletion(**kwargs)
         choice = response.choices[0]
 
-        if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
-            tool_results = []
-            for tc in choice.message.tool_calls:
-                fn = tools.get(tc.function.name)
-                if fn:
-                    args = json.loads(tc.function.arguments)
-                    result = await fn(**args)
-                    tool_results.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": result,
-                    })
+        logger.info(f"[engine] finish_reason={choice.finish_reason!r} tool_calls={bool(choice.message.tool_calls)} content_len={len(choice.message.content or '')}")
+
+        # If model wants to call tools
+        if choice.message.tool_calls:
+            logger.info(f"[engine] iteration {iteration}: {len(choice.message.tool_calls)} tool call(s)")
+
+            # Add assistant message with tool calls
             messages.append({
                 "role": "assistant",
                 "content": None,
                 "tool_calls": [
-                    {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
                     for tc in choice.message.tool_calls
-                ]
+                ],
             })
-            messages.extend(tool_results)
-            kwargs_stream = {**kwargs, "stream": True, "messages": messages}
-            kwargs_stream.pop("tools", None)
-            full = []
-            async for chunk in await litellm.acompletion(**kwargs_stream):
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    await on_token(delta)
-                    full.append(delta)
-            return "".join(full)
 
+            # Execute each tool call
+            for tc in choice.message.tool_calls:
+                fn = tool_fns.get(tc.function.name)
+                if fn:
+                    try:
+                        args = json.loads(tc.function.arguments)
+                        logger.info(f"[engine] calling {tc.function.name}({args})")
+                        result = await fn(**args)
+                        logger.info(f"[engine] {tc.function.name} returned: {result}")
+                        content = str(result) if not isinstance(result, str) else result
+                    except Exception as e:
+                        logger.error(f"[engine] tool {tc.function.name} failed: {e}")
+                        content = f"Error: {e}"
+                else:
+                    content = f"Error: unknown tool '{tc.function.name}'"
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": content,
+                })
+
+            # Continue loop — LLM will see tool results and decide next step
+            continue
+
+        # Final answer (no tool calls) — stream it
         content = choice.message.content or ""
         if content:
             await on_token(content)
+        logger.info(f"[engine] final answer, {len(content)} chars")
         return content
 
+    logger.warning("[engine] max iterations reached")
     return ""
