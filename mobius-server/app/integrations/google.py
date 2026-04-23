@@ -48,7 +48,7 @@ async def exchange_code_for_tokens(code: str) -> dict:
 async def google_callback(code: str, state: str):
     tokens = await exchange_code_for_tokens(code)
     await redis_client.set(f"oauth:google:{state}", json.dumps(tokens))
-    return {"status": "connected", "user_id": state}
+    return RedirectResponse(url="/setup")
 
 
 async def _get_access_token(user_id: str) -> str:

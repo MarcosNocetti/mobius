@@ -63,9 +63,26 @@ async def load_automations():
             print(f"Failed to schedule automation {auto.id}: {e}")
 
 
+async def load_saved_credentials():
+    """Load Google OAuth credentials saved via /setup from Redis."""
+    try:
+        cid = await redis_client.get("setup:google_client_id")
+        csec = await redis_client.get("setup:google_client_secret")
+        if cid and csec:
+            from app.core.config import settings
+            settings.GOOGLE_CLIENT_ID = cid
+            settings.GOOGLE_CLIENT_SECRET = csec
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    try:
+        await load_saved_credentials()
+    except Exception:
+        pass
     try:
         await load_automations()
     except Exception:
