@@ -11,13 +11,12 @@ from apscheduler.triggers.cron import CronTrigger
 from app.api.router import router
 from app.core.database import init_db, AsyncSessionLocal
 from app.core.redis import redis_client
-from app.agents.engine import run_agent
-from app.models.automation import ScheduledAutomation
+from app.models.automation import Automation
 
 scheduler = AsyncIOScheduler()
 
 
-async def run_automation(automation_id: str, prompt: str):
+async def run_automation(automation_id: str):
     """Run a scheduled automation with Redis lock to prevent duplicate execution."""
     lock_key = f"lock:automation:{automation_id}"
     acquired = await redis_client.set(lock_key, "1", nx=True, ex=300)
@@ -25,37 +24,53 @@ async def run_automation(automation_id: str, prompt: str):
         return
 
     try:
-        await run_agent(
-            message=prompt,
-            model="gemini/gemini-2.0-flash",
-            api_key=None,
-            tools=[],
-            on_token=lambda t: None,
-        )
         async with AsyncSessionLocal() as session:
-            auto = await session.get(ScheduledAutomation, automation_id)
-            if auto:
-                auto.last_run = datetime.utcnow()
-                await session.commit()
+            auto = await session.get(Automation, automation_id)
+            if not auto:
+                return
+
+            from app.automation.sandbox import execute_script
+            from app.automation.context import AutomationContext
+            import traceback
+
+            ctx = AutomationContext(user_id=auto.user_id, automation_id=automation_id)
+            try:
+                result = await execute_script(auto.script, ctx)
+                auto.last_result = result
+                auto.last_error = None
+                auto.status = "active"
+            except Exception as e:
+                auto.last_error = traceback.format_exc()
+                auto.last_result = None
+                auto.status = "error"
+
+            auto.last_run = datetime.utcnow()
+            auto.run_count += 1
+            await session.commit()
     finally:
         await redis_client.delete(lock_key)
 
 
 async def load_automations():
     """Load all active automations from DB and schedule them."""
+    import json
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(ScheduledAutomation).where(ScheduledAutomation.active == True)
+            select(Automation).where(Automation.status == "active")
         )
         automations = result.scalars().all()
 
     for auto in automations:
         try:
-            trigger = CronTrigger.from_crontab(auto.cron_expr)
+            config = json.loads(auto.trigger_config) if isinstance(auto.trigger_config, str) else auto.trigger_config
+            cron_expr = config.get("cron")
+            if not cron_expr:
+                continue
+            trigger = CronTrigger.from_crontab(cron_expr)
             scheduler.add_job(
                 run_automation,
                 trigger=trigger,
-                args=[auto.id, auto.prompt],
+                args=[auto.id],
                 id=auto.id,
                 replace_existing=True,
             )

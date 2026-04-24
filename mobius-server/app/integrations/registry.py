@@ -57,6 +57,18 @@ class IntegrationRegistry:
                 if meta is not None:
                     self._tools[meta.name] = {"fn": fn, "meta": meta}
 
+        # Also discover system tools (automation management)
+        try:
+            import app.automation.tools as automation_tools
+            for attr_name in dir(automation_tools):
+                attr = getattr(automation_tools, attr_name)
+                if callable(attr) and hasattr(attr, "_tool_meta"):
+                    meta = attr._tool_meta
+                    self._tools[meta.name] = {"fn": attr, "meta": meta}
+                    logger.info(f"[registry] discovered system tool: {meta.name}")
+        except Exception as e:
+            logger.warning(f"[registry] failed to load automation tools: {e}")
+
     def get(self, name: str) -> IntegrationBase:
         self._discover()
         integration = self._integrations.get(name)
@@ -87,6 +99,15 @@ class IntegrationRegistry:
             meta = entry["meta"]
             fn = entry["fn"]
             integration_name = meta.integration
+
+            # System tools are always available (no integration connection needed)
+            if integration_name == "_system":
+                bound_fn = meta.bind(user_id, fn)
+                result[tool_name] = {
+                    "fn": bound_fn,
+                    "schema": meta.to_schema(),
+                }
+                continue
 
             integration = self._integrations.get(integration_name)
             if not integration:
