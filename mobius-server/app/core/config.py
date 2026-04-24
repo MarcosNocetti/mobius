@@ -21,6 +21,17 @@ class Settings(BaseSettings):
     LINKEDIN_CLIENT_SECRET: str = ""
     NOTION_CLIENT_ID: str = ""
     NOTION_CLIENT_SECRET: str = ""
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+    SLACK_CLIENT_ID: str = ""
+    SLACK_CLIENT_SECRET: str = ""
+    AZURE_CLIENT_ID: str = ""
+    AZURE_CLIENT_SECRET: str = ""
+    AZURE_TENANT_ID: str = "common"
+    JIRA_CLIENT_ID: str = ""
+    JIRA_CLIENT_SECRET: str = ""
+    N8N_BASE_URL: str = ""
+    CLAUDE_API_KEY: str = ""
 
 
 settings = Settings()
