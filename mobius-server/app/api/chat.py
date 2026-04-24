@@ -143,7 +143,7 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
 
                 # Build dynamic integration status
                 integration_notes = []
-                for integ in integration_registry.get_all():
+                for integ in integration_registry.get_all().values():
                     connected = await integ.is_connected(user_id)
                     if connected:
                         integration_notes.append(f"✅ {integ.display_name}: CONNECTED")
