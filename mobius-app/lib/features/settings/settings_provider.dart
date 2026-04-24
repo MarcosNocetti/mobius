@@ -25,7 +25,7 @@ class SettingsState {
   final Map<AiModel, String> apiKeys;
 
   const SettingsState({
-    this.serverUrl = 'https://api-production-74cf.up.railway.app',
+    this.serverUrl = 'https://uptown-stew-viewing.ngrok-free.dev',
     this.selectedModel = AiModel.geminiFlash,
     this.apiKeys = const {},
   });
@@ -43,7 +43,7 @@ class SettingsState {
 }
 
 final backendClientProvider = Provider<BackendClient>((ref) {
-  return BackendClient(baseUrl: 'https://api-production-74cf.up.railway.app');
+  return BackendClient(baseUrl: 'https://uptown-stew-viewing.ngrok-free.dev');
 });
 
 class SettingsNotifier extends Notifier<SettingsState> {

@@ -8,7 +8,7 @@ class AppStorage {
 
   static const _tokenKey = 'jwt_token';
   static const _serverUrlKey = 'server_url';
-  static const _defaultServerUrl = 'https://api-production-74cf.up.railway.app';
+  static const _defaultServerUrl = 'https://uptown-stew-viewing.ngrok-free.dev';
 
   Future<void> saveToken(String token) =>
       _storage.write(key: _tokenKey, value: token);
