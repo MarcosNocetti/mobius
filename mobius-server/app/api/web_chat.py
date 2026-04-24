@@ -1,4 +1,4 @@
-"""Minimal web chat UI — accessible from any device via ngrok."""
+"""Web chat UI with conversation history sidebar — accessible from any device."""
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
@@ -9,12 +9,25 @@ CHAT_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Mobius Chat</title>
+<title>Mobius</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,sans-serif;background:#0a0a1a;color:#e0e0e0;height:100vh;display:flex;flex-direction:column}
-.header{background:#1a1a2e;padding:12px 16px;text-align:center;border-bottom:1px solid #333}
-.header h1{color:#00b4d8;font-size:1.2rem}
+.layout{display:flex;flex:1;overflow:hidden}
+.sidebar{width:260px;background:#111122;border-right:1px solid #222;display:flex;flex-direction:column;transition:transform .2s}
+.sidebar.hidden{transform:translateX(-260px);width:0;border:0}
+.sidebar-header{padding:12px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center}
+.sidebar-header h2{color:#00b4d8;font-size:1rem}
+.new-chat-btn{background:#00b4d8;color:#000;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-weight:600;font-size:.85rem}
+.conv-list{flex:1;overflow-y:auto;padding:4px}
+.conv-item{padding:10px 12px;border-radius:8px;cursor:pointer;margin:2px 0;font-size:.85rem;color:#bbb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv-item:hover{background:#1a1a2e}
+.conv-item.active{background:#1a1a3e;color:#00b4d8;border-left:3px solid #00b4d8}
+.conv-item .date{font-size:.7rem;color:#666;display:block}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.header{background:#1a1a2e;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #333}
+.header h1{color:#00b4d8;font-size:1.1rem;flex:1}
+.menu-btn{background:none;border:none;color:#888;font-size:1.4rem;cursor:pointer;padding:4px 8px}
 .messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px}
 .msg{max-width:85%;padding:10px 14px;border-radius:12px;font-size:.95rem;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
 .msg.user{align-self:flex-end;background:#00b4d8;color:#000;border-bottom-right-radius:4px}
@@ -30,12 +43,11 @@ body{font-family:-apple-system,sans-serif;background:#0a0a1a;color:#e0e0e0;heigh
 #auth input{width:100%;padding:10px;margin:8px 0;border:1px solid #333;border-radius:8px;background:#0a0a1a;color:#e0e0e0}
 #auth button{width:100%;padding:12px;margin:8px 0;border:none;border-radius:8px;background:#00b4d8;color:#000;font-weight:600;cursor:pointer;font-size:1rem}
 #auth .toggle{color:#00b4d8;cursor:pointer;text-align:center;margin-top:12px}
-.status{text-align:center;color:#888;font-size:.8rem;padding:4px}
+.empty-state{flex:1;display:flex;align-items:center;justify-content:center;color:#555;font-size:1.1rem}
+@media(max-width:600px){.sidebar{position:fixed;z-index:10;height:100%;width:260px}.sidebar.hidden{transform:translateX(-260px)}}
 </style>
 </head>
 <body>
-
-<div class="header"><h1>Mobius</h1></div>
 
 <div id="auth">
   <h3 style="color:#00b4d8;text-align:center;margin-bottom:16px" id="auth-title">Sign In</h3>
@@ -46,12 +58,27 @@ body{font-family:-apple-system,sans-serif;background:#0a0a1a;color:#e0e0e0;heigh
   <div id="auth-error" style="color:#f87171;text-align:center;margin-top:8px"></div>
 </div>
 
-<div id="chat" style="display:none;flex:1;flex-direction:column">
-  <div class="messages" id="messages"></div>
-  <div class="typing" id="typing" style="display:none">Mobius está pensando...</div>
-  <div class="input-bar">
-    <input type="text" id="input" placeholder="Ask Mobius..." onkeydown="if(event.key==='Enter')send()">
-    <button id="send-btn" onclick="send()">Send</button>
+<div class="layout" id="app" style="display:none">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>Conversas</h2>
+      <button class="new-chat-btn" onclick="newChat()">+ Nova</button>
+    </div>
+    <div class="conv-list" id="conv-list"></div>
+  </div>
+  <div class="main">
+    <div class="header">
+      <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+      <h1 id="conv-title">Mobius</h1>
+    </div>
+    <div class="messages" id="messages">
+      <div class="empty-state">Comece uma conversa</div>
+    </div>
+    <div class="typing" id="typing" style="display:none">Mobius está pensando...</div>
+    <div class="input-bar">
+      <input type="text" id="input" placeholder="Ask Mobius..." onkeydown="if(event.key==='Enter')send()">
+      <button id="send-btn" onclick="send()">Send</button>
+    </div>
   </div>
 </div>
 
@@ -60,14 +87,15 @@ const BASE = window.location.origin;
 let token = null;
 let ws = null;
 let isSignUp = false;
+let activeConvId = null;
+let conversations = [];
 
 function toggleAuth() {
   isSignUp = !isSignUp;
   document.getElementById('auth-title').textContent = isSignUp ? 'Sign Up' : 'Sign In';
   document.querySelector('#auth button').textContent = isSignUp ? 'Sign Up' : 'Sign In';
   document.querySelector('#auth .toggle').textContent = isSignUp
-    ? 'Already have an account? Sign In'
-    : "Don't have an account? Sign Up";
+    ? 'Already have an account? Sign In' : "Don't have an account? Sign Up";
 }
 
 async function auth() {
@@ -84,9 +112,55 @@ async function auth() {
     const d = await r.json();
     token = d.access_token;
     document.getElementById('auth').style.display = 'none';
-    document.getElementById('chat').style.display = 'flex';
+    document.getElementById('app').style.display = 'flex';
     connectWS();
+    loadConversations();
   } catch(e) { errEl.textContent = e.message; }
+}
+
+async function loadConversations() {
+  const r = await fetch(BASE+'/conversations', {headers:{'Authorization':'Bearer '+token}});
+  conversations = await r.json();
+  renderConvList();
+}
+
+function renderConvList() {
+  const el = document.getElementById('conv-list');
+  el.innerHTML = '';
+  for (const c of conversations) {
+    const div = document.createElement('div');
+    div.className = 'conv-item' + (c.id === activeConvId ? ' active' : '');
+    const d = new Date(c.updated_at || c.created_at);
+    div.innerHTML = `${c.title}<span class="date">${d.toLocaleDateString()} · ${c.message_count} msgs</span>`;
+    div.onclick = () => loadConversation(c.id);
+    el.appendChild(div);
+  }
+}
+
+async function loadConversation(convId) {
+  activeConvId = convId;
+  renderConvList();
+  const r = await fetch(BASE+'/conversations/'+convId, {headers:{'Authorization':'Bearer '+token}});
+  const data = await r.json();
+  document.getElementById('conv-title').textContent = data.title;
+  const msgsEl = document.getElementById('messages');
+  msgsEl.innerHTML = '';
+  for (const m of data.messages) {
+    if (m.role === 'user' || m.role === 'assistant') {
+      appendMsg(m.role, m.content);
+    }
+  }
+}
+
+function newChat() {
+  activeConvId = null;
+  document.getElementById('conv-title').textContent = 'Mobius';
+  document.getElementById('messages').innerHTML = '<div class="empty-state">Comece uma conversa</div>';
+  renderConvList();
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('hidden');
 }
 
 function connectWS() {
@@ -94,27 +168,37 @@ function connectWS() {
   ws = new WebSocket(`${proto}://${location.host}/ws/chat?token=${token}`);
   ws.onmessage = (e) => {
     const d = JSON.parse(e.data);
-    if (d.type === 'token') {
+    if (d.type === 'conversation_id') {
+      activeConvId = d.content;
+      loadConversations();
+    } else if (d.type === 'token') {
       appendToken(d.content);
     } else if (d.type === 'error') {
       appendMsg('error', d.content);
-      document.getElementById('typing').style.display = 'none';
-      document.getElementById('send-btn').disabled = false;
+      finish();
     } else if (d.type === 'done') {
       finalizeMsg();
-      document.getElementById('typing').style.display = 'none';
-      document.getElementById('send-btn').disabled = false;
+      finish();
     }
   };
   ws.onclose = () => setTimeout(connectWS, 2000);
 }
 
+function finish() {
+  document.getElementById('typing').style.display = 'none';
+  document.getElementById('send-btn').disabled = false;
+}
+
 let currentAssistant = null;
 function appendMsg(role, text) {
+  const msgsEl = document.getElementById('messages');
+  // Remove empty state
+  const empty = msgsEl.querySelector('.empty-state');
+  if (empty) empty.remove();
   const el = document.createElement('div');
   el.className = 'msg ' + role;
   el.textContent = text;
-  document.getElementById('messages').appendChild(el);
+  msgsEl.appendChild(el);
   el.scrollIntoView({behavior:'smooth'});
   return el;
 }
@@ -133,7 +217,9 @@ function send() {
   appendMsg('user', text);
   document.getElementById('typing').style.display = 'block';
   document.getElementById('send-btn').disabled = true;
-  ws.send(JSON.stringify({message: text, model: 'gemini-flash'}));
+  const payload = {message: text, model: 'gemini-flash'};
+  if (activeConvId) payload.conversation_id = activeConvId;
+  ws.send(JSON.stringify(payload));
 }
 </script>
 </body>
