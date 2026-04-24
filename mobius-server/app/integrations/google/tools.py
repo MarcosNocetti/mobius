@@ -220,3 +220,151 @@ async def list_tasks(user_id: str) -> str:
         for t in resp.json().get("items", [])
     ]
     return json.dumps(tasks, ensure_ascii=False)
+
+
+# ===== Gmail Label/Folder Management =====
+
+GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
+
+
+@tool_action(
+    name="list_gmail_labels",
+    description="List all Gmail labels (folders/categories) for the user.",
+    integration="google",
+    params={},
+)
+async def list_gmail_labels(user_id: str) -> str:
+    resp = await _google().api_request("get", f"{GMAIL_API}/labels", user_id)
+    labels = resp.json().get("labels", [])
+    lines = []
+    for l in sorted(labels, key=lambda x: x.get("name", "")):
+        ltype = l.get("type", "user")
+        count = l.get("messagesTotal", "")
+        unread = l.get("messagesUnread", "")
+        info = f" ({count} msgs, {unread} unread)" if count else ""
+        lines.append(f"- {l['name']} [id={l['id']}] ({ltype}){info}")
+    return "\n".join(lines) if lines else "No labels found"
+
+
+@tool_action(
+    name="create_gmail_label",
+    description="Create a new Gmail label (folder). Use for organizing emails.",
+    integration="google",
+    params={
+        "name": {"type": "string", "description": "Label name (e.g. 'Work/Projects' for nested)"},
+    },
+)
+async def create_gmail_label(user_id: str, name: str) -> str:
+    resp = await _google().api_request("post", f"{GMAIL_API}/labels", user_id, json={
+        "name": name,
+        "labelListVisibility": "labelShow",
+        "messageListVisibility": "show",
+    })
+    data = resp.json()
+    return f"Label created: '{data['name']}' (id={data['id']})"
+
+
+@tool_action(
+    name="delete_gmail_label",
+    description="Delete a Gmail label by its ID. Cannot delete system labels.",
+    integration="google",
+    params={
+        "label_id": {"type": "string", "description": "Label ID to delete"},
+    },
+)
+async def delete_gmail_label(user_id: str, label_id: str) -> str:
+    await _google().api_request("delete", f"{GMAIL_API}/labels/{label_id}", user_id)
+    return f"Label {label_id} deleted"
+
+
+@tool_action(
+    name="apply_gmail_label",
+    description="Apply a label to Gmail messages. Use to organize/categorize emails.",
+    integration="google",
+    params={
+        "message_ids": {"type": "array", "items": {"type": "string"}, "description": "List of message IDs"},
+        "label_ids_to_add": {"type": "array", "items": {"type": "string"}, "description": "Label IDs to add"},
+        "label_ids_to_remove": {"type": "array", "items": {"type": "string"}, "description": "Label IDs to remove (optional)"},
+    },
+)
+async def apply_gmail_label(user_id: str, message_ids: list, label_ids_to_add: list, label_ids_to_remove: list = None) -> str:
+    body = {
+        "ids": message_ids,
+        "addLabelIds": label_ids_to_add,
+    }
+    if label_ids_to_remove:
+        body["removeLabelIds"] = label_ids_to_remove
+    await _google().api_request("post", f"{GMAIL_API}/messages/batchModify", user_id, json=body)
+    return f"Labels applied to {len(message_ids)} message(s)"
+
+
+@tool_action(
+    name="move_gmail_to_folder",
+    description="Move Gmail messages to a specific folder/label. Removes from INBOX if moving elsewhere.",
+    integration="google",
+    params={
+        "query": {"type": "string", "description": "Gmail search query to find messages (e.g. 'from:newsletter@co.com')"},
+        "target_label": {"type": "string", "description": "Label name to move to (will create if not exists)"},
+    },
+)
+async def move_gmail_to_folder(user_id: str, query: str, target_label: str) -> str:
+    # Find messages matching query
+    resp = await _google().api_request("get", f"{GMAIL_API}/messages", user_id,
+                                        params={"q": query, "maxResults": 50})
+    messages = resp.json().get("messages", [])
+    if not messages:
+        return f"No messages matching '{query}'"
+
+    # Find or create target label
+    labels_resp = await _google().api_request("get", f"{GMAIL_API}/labels", user_id)
+    labels = labels_resp.json().get("labels", [])
+    target = next((l for l in labels if l["name"].lower() == target_label.lower()), None)
+
+    if not target:
+        create_resp = await _google().api_request("post", f"{GMAIL_API}/labels", user_id, json={
+            "name": target_label, "labelListVisibility": "labelShow", "messageListVisibility": "show",
+        })
+        target = create_resp.json()
+
+    # Apply label and remove from INBOX
+    msg_ids = [m["id"] for m in messages]
+    await _google().api_request("post", f"{GMAIL_API}/messages/batchModify", user_id, json={
+        "ids": msg_ids,
+        "addLabelIds": [target["id"]],
+        "removeLabelIds": ["INBOX"],
+    })
+    return f"Moved {len(msg_ids)} message(s) to '{target_label}'"
+
+
+@tool_action(
+    name="organize_gmail",
+    description="Smart email organization: read unread emails and suggest/apply labels based on content. Use AI to categorize.",
+    integration="google",
+    params={
+        "query": {"type": "string", "description": "Gmail search query (default: 'is:unread')"},
+        "auto_apply": {"type": "boolean", "description": "If true, apply labels automatically. If false, just suggest."},
+    },
+)
+async def organize_gmail(user_id: str, query: str = "is:unread", auto_apply: bool = False) -> str:
+    # Get messages
+    resp = await _google().api_request("get", f"{GMAIL_API}/messages", user_id,
+                                        params={"q": query, "maxResults": 20})
+    messages = resp.json().get("messages", [])
+    if not messages:
+        return "No messages to organize"
+
+    # Get details for each message
+    summaries = []
+    for msg in messages[:20]:
+        detail = await _google().api_request("get", f"{GMAIL_API}/messages/{msg['id']}", user_id,
+                                              params={"format": "metadata", "metadataHeaders": ["From", "Subject"]})
+        headers = {h["name"]: h["value"] for h in detail.json().get("payload", {}).get("headers", [])}
+        summaries.append({
+            "id": msg["id"],
+            "from": headers.get("From", "unknown"),
+            "subject": headers.get("Subject", "no subject"),
+        })
+
+    # Return summary for AI to reason about
+    lines = [f"- ID:{s['id']} | From: {s['from']} | Subject: {s['subject']}" for s in summaries]
+    return f"Found {len(summaries)} emails to organize:\n" + "\n".join(lines)
