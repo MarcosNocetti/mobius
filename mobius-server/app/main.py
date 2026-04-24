@@ -70,8 +70,8 @@ async def load_saved_credentials():
         csec = await redis_client.get("setup:google_client_secret")
         if cid and csec:
             from app.core.config import settings
-            settings.GOOGLE_CLIENT_ID = cid
-            settings.GOOGLE_CLIENT_SECRET = csec
+            settings.GOOGLE_CLIENT_ID = cid.decode() if isinstance(cid, bytes) else cid
+            settings.GOOGLE_CLIENT_SECRET = csec.decode() if isinstance(csec, bytes) else csec
     except Exception:
         pass
 
