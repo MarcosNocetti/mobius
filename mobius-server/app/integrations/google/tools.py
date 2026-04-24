@@ -338,33 +338,91 @@ async def move_gmail_to_folder(user_id: str, query: str, target_label: str) -> s
 
 @tool_action(
     name="organize_gmail",
-    description="Smart email organization: read unread emails and suggest/apply labels based on content. Use AI to categorize.",
+    description="Smart email organization: reads emails, uses AI to categorize them by topic, creates labels, and moves each email to the right folder. Fully automatic.",
     integration="google",
     params={
-        "query": {"type": "string", "description": "Gmail search query (default: 'is:unread')"},
-        "auto_apply": {"type": "boolean", "description": "If true, apply labels automatically. If false, just suggest."},
+        "query": {"type": "string", "description": "Gmail search query (default: 'is:unread in:inbox')"},
     },
 )
-async def organize_gmail(user_id: str, query: str = "is:unread", auto_apply: bool = False) -> str:
-    # Get messages
+async def organize_gmail(user_id: str, query: str = "is:unread in:inbox") -> str:
+    import litellm
+    from app.agents.engine import _get_gemini_key
+
+    # 1. Get messages
     resp = await _google().api_request("get", f"{GMAIL_API}/messages", user_id,
-                                        params={"q": query, "maxResults": 20})
+                                        params={"q": query, "maxResults": 30})
     messages = resp.json().get("messages", [])
     if not messages:
         return "No messages to organize"
 
-    # Get details for each message
-    summaries = []
-    for msg in messages[:20]:
+    # 2. Get details for each message
+    email_data = []
+    for msg in messages[:30]:
         detail = await _google().api_request("get", f"{GMAIL_API}/messages/{msg['id']}", user_id,
-                                              params={"format": "metadata", "metadataHeaders": ["From", "Subject"]})
+                                              params={"format": "metadata", "metadataHeaders": ["From", "Subject", "Date"]})
         headers = {h["name"]: h["value"] for h in detail.json().get("payload", {}).get("headers", [])}
-        summaries.append({
+        email_data.append({
             "id": msg["id"],
             "from": headers.get("From", "unknown"),
             "subject": headers.get("Subject", "no subject"),
+            "date": headers.get("Date", ""),
         })
 
-    # Return summary for AI to reason about
-    lines = [f"- ID:{s['id']} | From: {s['from']} | Subject: {s['subject']}" for s in summaries]
-    return f"Found {len(summaries)} emails to organize:\n" + "\n".join(lines)
+    # 3. Ask AI to categorize
+    email_list = "\n".join(f"ID:{e['id']} | From: {e['from']} | Subject: {e['subject']}" for e in email_data)
+
+    categorize_prompt = f"""Categorize these emails into folders. Return ONLY a JSON array where each item has "id" (email ID) and "label" (folder name).
+Use clear, short folder names in Portuguese like: "Newsletters", "Trabalho", "Social", "Compras", "Financeiro", "Notificações", "Pessoal", "Importante".
+
+Emails:
+{email_list}
+
+Return ONLY the JSON array, no explanation. Example: [{{"id":"abc123","label":"Newsletters"}},{{"id":"def456","label":"Trabalho"}}]"""
+
+    ai_resp = await litellm.acompletion(
+        model="gemini/gemini-2.5-flash",
+        messages=[{"role": "user", "content": categorize_prompt}],
+        api_key=_get_gemini_key(),
+    )
+    raw = ai_resp.choices[0].message.content.strip()
+
+    # Parse AI response
+    # Strip markdown code fences if present
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+    categories = json.loads(raw)
+
+    # 4. Get existing labels
+    labels_resp = await _google().api_request("get", f"{GMAIL_API}/labels", user_id)
+    existing_labels = {l["name"].lower(): l for l in labels_resp.json().get("labels", [])}
+
+    # 5. Group by label and apply
+    label_groups = {}
+    for cat in categories:
+        label_name = cat["label"]
+        msg_id = cat["id"]
+        label_groups.setdefault(label_name, []).append(msg_id)
+
+    results = []
+    for label_name, msg_ids in label_groups.items():
+        # Find or create label
+        label = existing_labels.get(label_name.lower())
+        if not label:
+            create_resp = await _google().api_request("post", f"{GMAIL_API}/labels", user_id, json={
+                "name": label_name,
+                "labelListVisibility": "labelShow",
+                "messageListVisibility": "show",
+            })
+            label = create_resp.json()
+            existing_labels[label_name.lower()] = label
+
+        # Apply label to messages
+        await _google().api_request("post", f"{GMAIL_API}/messages/batchModify", user_id, json={
+            "ids": msg_ids,
+            "addLabelIds": [label["id"]],
+        })
+        results.append(f"📁 {label_name}: {len(msg_ids)} email(s)")
+
+    summary = "\n".join(results)
+    return f"Organizei {len(categories)} emails em {len(label_groups)} pastas:\n{summary}"
