@@ -13,7 +13,7 @@ void main() {
 }
 
 Future<void> _testServerConnection() async {
-  const serverUrl = 'https://7c48-187-180-165-150.ngrok-free.app';
+  const serverUrl = 'https://api-production-74cf.up.railway.app';
   debugPrint('[MOBIUS] Testing connection to $serverUrl ...');
   try {
     final dio = Dio();
