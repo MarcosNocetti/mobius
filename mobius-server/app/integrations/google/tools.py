@@ -406,23 +406,26 @@ Return ONLY the JSON array, no explanation. Example: [{{"id":"abc123","label":"N
 
     results = []
     for label_name, msg_ids in label_groups.items():
-        # Find or create label
-        label = existing_labels.get(label_name.lower())
-        if not label:
-            create_resp = await _google().api_request("post", f"{GMAIL_API}/labels", user_id, json={
-                "name": label_name,
-                "labelListVisibility": "labelShow",
-                "messageListVisibility": "show",
-            })
-            label = create_resp.json()
-            existing_labels[label_name.lower()] = label
+        try:
+            # Find or create label
+            label = existing_labels.get(label_name.lower())
+            if not label:
+                create_resp = await _google().api_request("post", f"{GMAIL_API}/labels", user_id, json={
+                    "name": label_name,
+                    "labelListVisibility": "labelShow",
+                    "messageListVisibility": "show",
+                })
+                label = create_resp.json()
+                existing_labels[label_name.lower()] = label
 
-        # Apply label to messages
-        await _google().api_request("post", f"{GMAIL_API}/messages/batchModify", user_id, json={
-            "ids": msg_ids,
-            "addLabelIds": [label["id"]],
-        })
-        results.append(f"📁 {label_name}: {len(msg_ids)} email(s)")
+            # Apply label to messages
+            await _google().api_request("post", f"{GMAIL_API}/messages/batchModify", user_id, json={
+                "ids": msg_ids,
+                "addLabelIds": [label["id"]],
+            })
+            results.append(f"📁 {label_name}: {len(msg_ids)} email(s)")
+        except Exception as e:
+            results.append(f"❌ {label_name}: erro ({e})")
 
     summary = "\n".join(results)
     return f"Organizei {len(categories)} emails em {len(label_groups)} pastas:\n{summary}"
