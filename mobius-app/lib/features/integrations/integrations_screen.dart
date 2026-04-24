@@ -22,35 +22,36 @@ class IntegrationsScreen extends ConsumerWidget {
           itemCount: integrations.length,
           separatorBuilder: (_, __) => const Divider(),
           itemBuilder: (context, index) {
-            final integration = integrations[index];
+            final i = integrations[index];
             return ListTile(
-              title: Text(integration.displayName),
+              title: Text(i.displayName),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Chip(
                     label: Text(
-                      integration.connected ? 'Connected' : 'Disconnected',
+                      i.connected ? 'Connected' : 'Disconnected',
                       style: TextStyle(
-                        color: integration.connected ? Colors.green : Colors.grey,
+                        color: i.connected ? Colors.green : Colors.grey,
                         fontSize: 12,
                       ),
                     ),
-                    backgroundColor: integration.connected
+                    backgroundColor: i.connected
                         ? Colors.green.withOpacity(0.15)
                         : Colors.grey.withOpacity(0.15),
                   ),
                   const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () async {
-                      final url = Uri.parse(
-                          '${settings.serverUrl}${integration.oauthPath}');
-                      if (await canLaunchUrl(url)) {
-                        await launchUrl(url, mode: LaunchMode.externalApplication);
-                      }
-                    },
-                    child: Text(integration.connected ? 'Disconnect' : 'Connect'),
-                  ),
+                  if (i.authType == 'oauth2')
+                    TextButton(
+                      onPressed: () async {
+                        final url = Uri.parse(
+                            '${settings.serverUrl}/connect/${i.name}');
+                        if (await canLaunchUrl(url)) {
+                          await launchUrl(url, mode: LaunchMode.externalApplication);
+                        }
+                      },
+                      child: Text(i.connected ? 'Reconnect' : 'Connect'),
+                    ),
                 ],
               ),
             );

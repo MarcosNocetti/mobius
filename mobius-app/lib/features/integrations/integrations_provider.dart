@@ -5,36 +5,27 @@ class IntegrationStatus {
   final String name;
   final String displayName;
   final bool connected;
-  final String oauthPath;
+  final String authType;
 
   const IntegrationStatus({
     required this.name,
     required this.displayName,
     required this.connected,
-    required this.oauthPath,
+    required this.authType,
   });
-}
 
-const _integrationMeta = {
-  'google': ('Google', '/oauth/google'),
-  'notion': ('Notion', '/oauth/notion'),
-  'instagram': ('Instagram', '/oauth/instagram'),
-  'twitter': ('Twitter / X', '/oauth/twitter'),
-  'linkedin': ('LinkedIn', '/oauth/linkedin'),
-};
+  factory IntegrationStatus.fromJson(Map<String, dynamic> json) => IntegrationStatus(
+    name: json['name'] as String,
+    displayName: json['display_name'] as String,
+    connected: json['connected'] as bool,
+    authType: json['auth_type'] as String,
+  );
+}
 
 final integrationsProvider = FutureProvider<List<IntegrationStatus>>((ref) async {
   final client = ref.watch(backendClientProvider);
-  final response = await client.get('/integrations/status');
+  final response = await client.get('/connect/status');
   final data = response.data as Map<String, dynamic>;
-
-  return _integrationMeta.entries.map((entry) {
-    final (displayName, oauthPath) = entry.value;
-    return IntegrationStatus(
-      name: entry.key,
-      displayName: displayName,
-      connected: (data[entry.key] as bool?) ?? false,
-      oauthPath: oauthPath,
-    );
-  }).toList();
+  final list = data['integrations'] as List<dynamic>;
+  return list.map((e) => IntegrationStatus.fromJson(e as Map<String, dynamic>)).toList();
 });
