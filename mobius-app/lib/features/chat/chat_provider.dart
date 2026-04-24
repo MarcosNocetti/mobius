@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/storage.dart';
 import '../../services/websocket_service.dart';
 import '../../shared/models/message.dart';
+import 'conversation_provider.dart';
 
 final webSocketServiceProvider = Provider<WebSocketService>((ref) {
   final service = WebSocketService();
@@ -47,7 +48,8 @@ class ChatNotifier extends AsyncNotifier<List<Message>> {
     final assistantMsg = Message(role: 'assistant', content: '', timestamp: DateTime.now());
     state = AsyncValue.data([...(state.value ?? []), assistantMsg]);
 
-    ws.sendMessage(text, model);
+    final convId = ref.read(activeConversationIdProvider);
+    ws.sendMessage(text, model, conversationId: convId);
 
     await for (final event in ws.stream) {
       if (event is TokenEvent) {
@@ -56,6 +58,8 @@ class ChatNotifier extends AsyncNotifier<List<Message>> {
         final lastIndex = messages.length - 1;
         messages[lastIndex] = messages[lastIndex].copyWith(content: assistantContent);
         state = AsyncValue.data(messages);
+      } else if (event is ConversationIdEvent) {
+        ref.read(activeConversationIdProvider.notifier).state = event.conversationId;
       } else if (event is DoneEvent) {
         break;
       }

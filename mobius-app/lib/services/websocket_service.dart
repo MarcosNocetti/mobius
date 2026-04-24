@@ -12,6 +12,11 @@ class TokenEvent extends WsEvent {
 
 class DoneEvent extends WsEvent {}
 
+class ConversationIdEvent extends WsEvent {
+  final String conversationId;
+  ConversationIdEvent(this.conversationId);
+}
+
 typedef ChannelFactory = WebSocketChannel Function(Uri uri);
 
 class WebSocketService {
@@ -46,6 +51,8 @@ class WebSocketService {
         _controller.add(TokenEvent('[Erro] ${json['content']}'));
       } else if (json['type'] == 'done') {
         _controller.add(DoneEvent());
+      } else if (json['type'] == 'conversation_id') {
+        _controller.add(ConversationIdEvent(json['content'] as String));
       }
     } catch (_) {}
   }
@@ -58,9 +65,10 @@ class WebSocketService {
     // Channel closed — could trigger reconnect
   }
 
-  void sendMessage(String message, String model) {
-    final payload = jsonEncode({'message': message, 'model': model});
-    _channel?.sink.add(payload);
+  void sendMessage(String message, String model, {String? conversationId}) {
+    final payload = <String, dynamic>{'message': message, 'model': model};
+    if (conversationId != null) payload['conversation_id'] = conversationId;
+    _channel?.sink.add(jsonEncode(payload));
   }
 
   Future<void> disconnect() async {

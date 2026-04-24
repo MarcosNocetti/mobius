@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'chat_provider.dart';
 import 'message_bubble.dart';
+import 'mobius_drawer.dart';
 import 'typing_indicator.dart';
 import '../settings/settings_provider.dart';
 
@@ -48,7 +49,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final isStreaming = ref.watch(isStreamingProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mobius Chat')),
+      drawer: const MobiusDrawer(),
+      appBar: AppBar(
+        title: const Text('Mobius Chat'),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+      ),
       body: Column(
         children: [
           Expanded(

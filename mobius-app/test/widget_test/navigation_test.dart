@@ -3,14 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobius_app/app.dart';
 import 'package:mobius_app/features/auth/auth_provider.dart';
+import 'package:mobius_app/features/chat/conversation_provider.dart';
 
 void main() {
-  testWidgets('Bottom nav bar has 4 tabs', (tester) async {
+  testWidgets('Chat screen has drawer with hamburger menu', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           authNotifierProvider.overrideWith(
             () => _AlwaysAuthenticatedNotifier(),
+          ),
+          conversationsProvider.overrideWith(
+            (ref) => <ConversationSummary>[],
           ),
         ],
         child: const MobiusApp(),
@@ -18,30 +22,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(NavigationBar), findsOneWidget);
-    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
-    expect(find.byIcon(Icons.schedule), findsOneWidget);
-    expect(find.byIcon(Icons.link), findsOneWidget);
-    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
-  });
+    // Should have a hamburger menu icon
+    expect(find.byIcon(Icons.menu), findsOneWidget);
 
-  testWidgets('Tapping Settings tab shows SettingsScreen', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authNotifierProvider.overrideWith(
-            () => _AlwaysAuthenticatedNotifier(),
-          ),
-        ],
-        child: const MobiusApp(),
-      ),
-    );
+    // Open the drawer
+    await tester.tap(find.byIcon(Icons.menu));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.settings_outlined));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Settings'), findsWidgets);
+    // Drawer should contain navigation items
+    expect(find.text('Mobius'), findsOneWidget);
+    expect(find.text('Integrations'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Conversations'), findsOneWidget);
   });
 }
 
