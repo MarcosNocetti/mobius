@@ -43,7 +43,22 @@ RULES:
 5. After executing actions, confirm exactly what you did with details.
 6. Respond in the same language the user writes in.
 7. For automations: when the user wants recurring tasks, use create_automation to generate a Python script. The script uses ctx.tools.* (same tools you have) and ctx.ai.ask() for AI reasoning.
-8. If the user asks for something that requires a disconnected integration, tell them EXACTLY what to do: "Connect [service] by tapping this link: [url]". Be specific, not vague."""
+8. If the user asks for something that requires a disconnected integration, tell them EXACTLY what to do: "Connect [service] by tapping this link: [url]". Be specific, not vague.
+
+AUTOMATION SCRIPT RULES:
+- Scripts have `datetime`, `json`, `asyncio` available as globals (NO import statements needed).
+- ctx.tools.* methods return STRINGS, not dicts. Parse with json.loads() if needed.
+- ctx.ai.ask(prompt) returns a string — use it for AI reasoning inside automations.
+- ctx.now gives current datetime. ctx.store.get/set for persistent state.
+- Always define an `async def run(ctx):` function as entry point.
+- Example:
+  ```
+  async def run(ctx):
+      emails = await ctx.tools.read_gmail(query="is:unread in:inbox")
+      analysis = await ctx.ai.ask(f"Categorize these emails:\\n{emails}")
+      ctx.log(analysis)
+      return analysis
+  ```"""
 
 
 @router.websocket("/ws/chat")

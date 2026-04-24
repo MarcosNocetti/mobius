@@ -1,10 +1,24 @@
 import ast
 import asyncio
+import json
 import logging
-from datetime import datetime
+import math
+import re
+import time
+import datetime as _datetime
 from app.automation.context import AutomationContext
 
 logger = logging.getLogger("mobius.sandbox")
+
+# Safe modules available to automation scripts (no imports needed)
+SAFE_MODULES = {
+    "datetime": _datetime,
+    "json": json,
+    "asyncio": asyncio,
+    "time": time,
+    "re": re,
+    "math": math,
+}
 
 SAFE_BUILTINS = {
     "True": True, "False": False, "None": None,
@@ -15,13 +29,11 @@ SAFE_BUILTINS = {
     "min": min, "max": max, "sum": sum, "sorted": sorted,
     "abs": abs, "round": round,
     "isinstance": isinstance, "type": type,
-    "print": print,  # Redirected to ctx.log in practice
-    "asyncio": asyncio,  # Allow async primitives in scripts
+    "print": print,
 }
 
-FORBIDDEN_NODES = {
-    ast.Import, ast.ImportFrom,  # No imports
-}
+# Only allow importing safe modules
+ALLOWED_IMPORTS = {"datetime", "json", "asyncio", "time", "re", "math"}
 
 
 def validate_script(source: str) -> list[str]:
@@ -33,8 +45,13 @@ def validate_script(source: str) -> list[str]:
         return [f"Syntax error: {e}"]
 
     for node in ast.walk(tree):
-        if type(node) in FORBIDDEN_NODES:
-            errors.append(f"Forbidden: {type(node).__name__} (no imports allowed)")
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name not in ALLOWED_IMPORTS:
+                    errors.append(f"Forbidden import: '{alias.name}'. Allowed: {ALLOWED_IMPORTS}")
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.module.split(".")[0] not in ALLOWED_IMPORTS:
+                errors.append(f"Forbidden import: '{node.module}'. Allowed: {ALLOWED_IMPORTS}")
     return errors
 
 
@@ -44,16 +61,25 @@ async def execute_script(source: str, ctx: AutomationContext, timeout: int = 300
     if errors:
         raise ValueError(f"Script validation failed: {'; '.join(errors)}")
 
-    # Compile the script
     code = compile(source, "<automation>", "exec")
 
-    # Build globals with ctx and safe builtins
-    script_globals = {"__builtins__": SAFE_BUILTINS, "ctx": ctx}
+    # Safe __import__ that only allows whitelisted modules
+    def safe_import(name, *args, **kwargs):
+        if name in SAFE_MODULES:
+            return SAFE_MODULES[name]
+        raise ImportError(f"Import '{name}' not allowed. Available: {list(SAFE_MODULES.keys())}")
 
-    # Execute with timeout
+    builtins_with_import = {**SAFE_BUILTINS, "__import__": safe_import}
+
+    # Build globals: builtins + safe modules + ctx
+    script_globals = {
+        "__builtins__": builtins_with_import,
+        "ctx": ctx,
+        **SAFE_MODULES,  # datetime, json, asyncio available without import
+    }
+
     async def run():
         exec(code, script_globals)
-        # If the script defines a `run` function, call it
         if "run" in script_globals and callable(script_globals["run"]):
             result = script_globals["run"](ctx)
             if asyncio.iscoroutine(result):
