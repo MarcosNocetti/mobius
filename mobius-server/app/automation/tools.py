@@ -1,3 +1,4 @@
+from datetime import datetime
 from app.agents.tools.decorator import tool_action
 
 
@@ -30,7 +31,27 @@ async def create_automation_tool(user_id: str, name: str, description: str, cron
         session.add(automation)
         await session.commit()
         await session.refresh(automation)
-        return f"Automation '{name}' created (ID: {automation.id}). Cron: {cron}. Status: active."
+
+        # Auto-execute to validate
+        from app.automation.sandbox import execute_script
+        from app.automation.context import AutomationContext
+        import traceback
+
+        ctx = AutomationContext(user_id=user_id, automation_id=automation.id)
+        try:
+            result = await execute_script(automation.script, ctx, timeout=60)
+            automation.last_run = datetime.utcnow()
+            automation.last_result = result
+            automation.run_count = 1
+            await session.commit()
+            return f"Automation '{name}' created and executed successfully!\nCron: {cron}\nFirst run result: {result}"
+        except Exception as e:
+            automation.last_run = datetime.utcnow()
+            automation.last_error = traceback.format_exc()
+            automation.status = "error"
+            automation.run_count = 1
+            await session.commit()
+            return f"Automation '{name}' created but first run failed: {e}\nThe script needs fixing."
 
 
 @tool_action(
