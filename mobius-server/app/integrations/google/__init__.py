@@ -38,7 +38,7 @@ class GoogleIntegration(IntegrationBase):
     def get_authorize_url(self, user_id: str, base_url: str) -> str:
         params = {
             "client_id": self._get_client_id(),
-            "redirect_uri": f"{base_url}/connect/{self.name}/callback",
+            "redirect_uri": f"{base_url}/integrations/google/callback",
             "response_type": "code",
             "scope": " ".join(self.scopes),
             "access_type": "offline",
@@ -46,6 +46,22 @@ class GoogleIntegration(IntegrationBase):
             "state": user_id,
         }
         return f"{self.auth_url}?{urlencode(params)}"
+
+    async def handle_callback(self, code: str, state: str, base_url: str) -> dict:
+        """Override to use legacy redirect URI that matches Google Cloud Console."""
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(self.token_url, data={
+                "code": code,
+                "client_id": self._get_client_id(),
+                "client_secret": self._get_client_secret(),
+                "redirect_uri": f"{base_url}/integrations/google/callback",
+                "grant_type": "authorization_code",
+            })
+            resp.raise_for_status()
+            tokens = resp.json()
+        await redis_client.set(self._redis_key(state), json.dumps(tokens))
+        return tokens
 
 
 # ---- Legacy FastAPI router (kept for backward compat until Task 6) ----
