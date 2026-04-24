@@ -53,6 +53,9 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
 
     await websocket.accept()
 
+    # Track active conversation for this WebSocket session
+    active_conv_id = None
+
     try:
         while True:
             raw = await websocket.receive_text()
@@ -60,10 +63,11 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
             user_message = payload.get("message", "")
             raw_model = payload.get("model", "gemini/gemini-2.5-flash")
             model = _MODEL_MAP.get(raw_model, raw_model)
+            req_conv_id = payload.get("conversation_id")  # Optional: continue existing
 
-            logger.info(f"[ws] message={user_message!r} model={model!r}")
+            logger.info(f"[ws] message={user_message!r} model={model!r} conv={req_conv_id or 'new'}")
 
-            # Reload user each message to pick up fresh API keys
+            # Reload user for API keys
             async with AsyncSessionLocal() as session:
                 db_user = await session.get(UserModel, user_id)
 
@@ -72,21 +76,54 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
             user_key = None
             if db_user and db_user.api_keys and provider in db_user.api_keys:
                 user_key = decrypt_api_key(db_user.api_keys[provider])
-                logger.info(f"[ws] using user key for provider={provider!r}")
 
-            # Persist user message
+            # Get or create conversation
             async with AsyncSessionLocal() as session:
-                conv = Conversation(user_id=user_id)
-                session.add(conv)
-                await session.flush()
-                session.add(Message(conversation_id=conv.id, role="user", content=user_message))
-                await session.commit()
-                conv_id = conv.id
+                conv_id = req_conv_id or active_conv_id
+                if conv_id:
+                    conv = await session.get(Conversation, conv_id)
+                    if not conv or conv.user_id != user_id:
+                        conv = None
+                        conv_id = None
 
-            # Build tools — registry only returns tools from connected integrations
+                if not conv_id:
+                    # Generate title from first message
+                    title = user_message[:60] + ("..." if len(user_message) > 60 else "")
+                    conv = Conversation(user_id=user_id, title=title)
+                    session.add(conv)
+                    await session.flush()
+                    conv_id = conv.id
+
+                # Save user message
+                session.add(Message(conversation_id=conv_id, role="user", content=user_message))
+                conv.message_count = (conv.message_count or 0) + 1
+                conv.updated_at = datetime.utcnow()
+                await session.commit()
+
+            active_conv_id = conv_id
+
+            # Send conversation_id to client so it can continue
+            await websocket.send_text(json.dumps({
+                "type": "conversation_id", "content": conv_id
+            }))
+
+            # Load conversation history for context
+            history_messages = []
+            async with AsyncSessionLocal() as session:
+                from sqlalchemy import select as sa_select
+                msgs = await session.execute(
+                    sa_select(Message)
+                    .where(Message.conversation_id == conv_id)
+                    .order_by(Message.created_at)
+                )
+                for m in msgs.scalars().all():
+                    if m.role in ("user", "assistant"):
+                        history_messages.append({"role": m.role, "content": m.content})
+
+            # Build tools
             tool_registry = await integration_registry.get_tools_for_user(user_id)
 
-            # Check Google connection status (for system prompt hint)
+            # Build system prompt with context
             google_connected = False
             try:
                 google = integration_registry.get("google")
@@ -94,7 +131,6 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
             except Exception:
                 pass
 
-            # Stream response
             full_response_parts = []
 
             async def send_token(chunk: str):
@@ -107,15 +143,26 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
                 google_note = (
                     "Google Calendar and Gmail are CONNECTED and ready to use."
                     if google_connected
-                    else f"Google is NOT connected. If the user asks for calendar/email actions, "
-                         f"tell them to connect first by opening this link: {connect_url}"
+                    else f"Google is NOT connected. Tell user to connect: {connect_url}"
                 )
                 system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
                     now=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 )
                 full_system = f"{system_prompt}\n\nGoogle status: {google_note}"
+
+                # Build full message with conversation history
+                if len(history_messages) > 1:
+                    # Include history — last message is the current one, already in history
+                    history_text = "\n".join(
+                        f"{'User' if m['role']=='user' else 'Assistant'}: {m['content']}"
+                        for m in history_messages[:-1]  # exclude current message
+                    )
+                    full_message = f"{full_system}\n\nConversation history:\n{history_text}\n\nUser: {user_message}"
+                else:
+                    full_message = f"{full_system}\n\nUser: {user_message}"
+
                 await run_agent_with_tools(
-                    message=f"{full_system}\n\nUser: {user_message}",
+                    message=full_message,
                     model=model,
                     api_key=user_key,
                     tool_registry=tool_registry,
@@ -126,17 +173,19 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
                 logger.error(f"[ws] agent error: {error_msg}")
                 await websocket.send_text(json.dumps({"type": "error", "content": error_msg}))
 
-            # Persist assistant message
+            # Persist assistant response
+            assistant_content = "".join(full_response_parts).strip()
             async with AsyncSessionLocal() as session:
+                conv = await session.get(Conversation, conv_id)
                 session.add(Message(
-                    conversation_id=conv_id,
-                    role="assistant",
-                    content="".join(full_response_parts).strip(),
+                    conversation_id=conv_id, role="assistant", content=assistant_content,
                 ))
+                conv.message_count = (conv.message_count or 0) + 1
+                conv.updated_at = datetime.utcnow()
                 await session.commit()
 
             await websocket.send_text(json.dumps({"type": "done"}))
-            logger.info(f"[ws] done, {len(full_response_parts)} chunks")
+            logger.info(f"[ws] done, conv={conv_id}, {len(full_response_parts)} chunks")
 
     except WebSocketDisconnect:
         logger.info(f"[ws] user_id={user_id} disconnected")
