@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/storage.dart';
+import '../../services/backend_client.dart';
 import '../../services/websocket_service.dart';
 import '../../shared/models/message.dart';
+import '../../features/settings/settings_provider.dart';
 import 'conversation_provider.dart';
 
 final webSocketServiceProvider = Provider<WebSocketService>((ref) {
@@ -33,6 +35,26 @@ class ChatNotifier extends AsyncNotifier<List<Message>> {
     final ws = ref.read(webSocketServiceProvider);
     ws.connect(host, token, scheme: wsScheme);
     _connected = true;
+  }
+
+  Future<void> loadConversation(String conversationId) async {
+    final client = ref.read(backendClientProvider);
+    try {
+      final resp = await client.get('/conversations/$conversationId');
+      final data = resp.data as Map<String, dynamic>;
+      final messages = (data['messages'] as List<dynamic>)
+          .where((m) => m['role'] == 'user' || m['role'] == 'assistant')
+          .map((m) => Message(
+                role: m['role'] as String,
+                content: m['content'] as String,
+                timestamp: DateTime.tryParse(m['created_at'] ?? '') ?? DateTime.now(),
+              ))
+          .toList();
+      state = AsyncValue.data(messages);
+      ref.read(activeConversationIdProvider.notifier).state = conversationId;
+    } catch (e) {
+      state = AsyncValue.data([]);
+    }
   }
 
   Future<void> sendMessage(String text, String model) async {

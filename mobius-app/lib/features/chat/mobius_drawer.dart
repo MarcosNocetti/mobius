@@ -175,8 +175,8 @@ class MobiusDrawer extends ConsumerWidget {
                               ),
                               onTap: () {
                                 ref
-                                    .read(activeConversationIdProvider.notifier)
-                                    .state = conv.id;
+                                    .read(chatNotifierProvider.notifier)
+                                    .loadConversation(conv.id);
                                 Navigator.pop(context);
                                 context.go('/chat');
                               },
