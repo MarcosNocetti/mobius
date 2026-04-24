@@ -89,6 +89,7 @@ async def run_agent_with_tools(
     api_key: str | None,
     tool_registry: dict[str, dict],  # {name: {"fn": callable, "schema": dict}}
     on_token: Callable[[str], Awaitable[Any]],
+    on_status: Callable[[str], Awaitable[Any]] | None = None,
     max_iterations: int = 5,
 ) -> str:
     """
@@ -103,7 +104,13 @@ async def run_agent_with_tools(
 
     logger.info(f"[engine] agent loop: model={model!r} tools={list(tool_fns.keys())}")
 
+    async def _status(msg: str):
+        if on_status:
+            await on_status(msg)
+
     for iteration in range(max_iterations):
+        await _status("Pensando...")
+
         extra = {}
         if tool_schemas:
             extra["tools"] = tool_schemas
@@ -140,13 +147,18 @@ async def run_agent_with_tools(
                 if fn:
                     try:
                         args = json.loads(tc.function.arguments)
+                        # Friendly tool name for status
+                        friendly = tc.function.name.replace("_", " ").title()
+                        await _status(f"Executando: {friendly}...")
                         logger.info(f"[engine] calling {tc.function.name}({args})")
                         result = await fn(**args)
                         logger.info(f"[engine] {tc.function.name} returned: {result}")
                         content = str(result) if not isinstance(result, str) else result
+                        await _status(f"✓ {friendly}")
                     except Exception as e:
                         logger.error(f"[engine] tool {tc.function.name} failed: {e}")
                         content = f"Error: {e}"
+                        await _status(f"✗ {friendly}: erro")
                 else:
                     content = f"Error: unknown tool '{tc.function.name}'"
 
@@ -160,6 +172,7 @@ async def run_agent_with_tools(
             continue
 
         # Final answer (no tool calls) — stream it
+        await _status("")  # Clear status
         content = choice.message.content or ""
         if content:
             await on_token(content)

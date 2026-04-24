@@ -47,6 +47,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(chatNotifierProvider);
     final isStreaming = ref.watch(isStreamingProvider);
+    final agentStatus = ref.watch(agentStatusProvider);
 
     return Scaffold(
       drawer: const MobiusDrawer(),
@@ -70,7 +71,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 itemCount: messages.length + (isStreaming ? 1 : 0),
                 itemBuilder: (context, index) {
                   if (index == messages.length && isStreaming) {
-                    return const TypingIndicator();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00B4D8)),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            agentStatus.isNotEmpty ? agentStatus : 'Pensando...',
+                            style: const TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    );
                   }
                   return MessageBubble(message: messages[index]);
                 },

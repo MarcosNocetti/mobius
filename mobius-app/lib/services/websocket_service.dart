@@ -12,6 +12,11 @@ class TokenEvent extends WsEvent {
 
 class DoneEvent extends WsEvent {}
 
+class StatusEvent extends WsEvent {
+  final String status;
+  StatusEvent(this.status);
+}
+
 class ConversationIdEvent extends WsEvent {
   final String conversationId;
   ConversationIdEvent(this.conversationId);
@@ -49,6 +54,8 @@ class WebSocketService {
         _controller.add(TokenEvent(json['content'] as String));
       } else if (json['type'] == 'error') {
         _controller.add(TokenEvent('[Erro] ${json['content']}'));
+      } else if (json['type'] == 'status') {
+        _controller.add(StatusEvent(json['content'] as String));
       } else if (json['type'] == 'done') {
         _controller.add(DoneEvent());
       } else if (json['type'] == 'conversation_id') {

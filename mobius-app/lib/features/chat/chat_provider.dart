@@ -11,6 +11,7 @@ final webSocketServiceProvider = Provider<WebSocketService>((ref) {
 });
 
 final isStreamingProvider = StateProvider<bool>((ref) => false);
+final agentStatusProvider = StateProvider<String>((ref) => '');
 
 class ChatNotifier extends AsyncNotifier<List<Message>> {
   bool _connected = false;
@@ -58,6 +59,8 @@ class ChatNotifier extends AsyncNotifier<List<Message>> {
         final lastIndex = messages.length - 1;
         messages[lastIndex] = messages[lastIndex].copyWith(content: assistantContent);
         state = AsyncValue.data(messages);
+      } else if (event is StatusEvent) {
+        ref.read(agentStatusProvider.notifier).state = event.status;
       } else if (event is ConversationIdEvent) {
         ref.read(activeConversationIdProvider.notifier).state = event.conversationId;
       } else if (event is DoneEvent) {
@@ -66,6 +69,7 @@ class ChatNotifier extends AsyncNotifier<List<Message>> {
     }
 
     ref.read(isStreamingProvider.notifier).state = false;
+    ref.read(agentStatusProvider.notifier).state = '';
   }
 }
 

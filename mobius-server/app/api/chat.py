@@ -174,12 +174,16 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
                 else:
                     full_message = f"{full_system}\n\nUser: {user_message}"
 
+                async def send_status(status: str):
+                    await websocket.send_text(json.dumps({"type": "status", "content": status}))
+
                 await run_agent_with_tools(
                     message=full_message,
                     model=model,
                     api_key=user_key,
                     tool_registry=tool_registry,
                     on_token=send_token,
+                    on_status=send_status,
                 )
             except Exception as e:
                 error_msg = str(e)
