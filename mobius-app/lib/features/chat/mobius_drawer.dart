@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../automations/automations_provider.dart';
 import 'conversation_provider.dart';
 import 'chat_provider.dart';
 
@@ -10,6 +11,7 @@ class MobiusDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final conversationsAsync = ref.watch(conversationsProvider);
+    final automationsAsync = ref.watch(automationsProvider);
     final activeId = ref.watch(activeConversationIdProvider);
 
     return Drawer(
@@ -43,6 +45,7 @@ class MobiusDrawer extends ConsumerWidget {
               ),
             ),
             const Divider(color: Color(0xFF333333), height: 1),
+
             // Nav buttons
             ListTile(
               leading: const Icon(Icons.link, color: Colors.grey),
@@ -65,7 +68,54 @@ class MobiusDrawer extends ConsumerWidget {
               },
             ),
             const Divider(color: Color(0xFF333333), height: 1),
-            // Conversation list header
+
+            // Automations section
+            automationsAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (automations) => automations.isEmpty
+                  ? const SizedBox.shrink()
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Text('Automations',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 12)),
+                        ),
+                        ...automations.map((auto) => ListTile(
+                              dense: true,
+                              leading: Icon(
+                                auto.active
+                                    ? Icons.play_circle_outline
+                                    : Icons.pause_circle_outline,
+                                size: 18,
+                                color: auto.active
+                                    ? const Color(0xFF4ade80)
+                                    : Colors.grey,
+                              ),
+                              title: Text(
+                                auto.prompt.length > 30
+                                    ? '${auto.prompt.substring(0, 30)}...'
+                                    : auto.prompt,
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                auto.cronExpr,
+                                style: const TextStyle(
+                                    color: Colors.grey, fontSize: 10),
+                              ),
+                            )),
+                        const Divider(color: Color(0xFF333333), height: 1),
+                      ],
+                    ),
+            ),
+
+            // Conversations header
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Align(
@@ -74,6 +124,7 @@ class MobiusDrawer extends ConsumerWidget {
                     style: TextStyle(color: Colors.grey, fontSize: 12)),
               ),
             ),
+
             // Conversation list
             Expanded(
               child: conversationsAsync.when(
