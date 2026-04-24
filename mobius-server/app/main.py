@@ -83,6 +83,9 @@ async def lifespan(app: FastAPI):
         await load_saved_credentials()
     except Exception:
         pass
+    # Discover all integrations and their tools
+    from app.integrations.registry import integration_registry
+    integration_registry.get_all()  # triggers _discover()
     try:
         await load_automations()
     except Exception:

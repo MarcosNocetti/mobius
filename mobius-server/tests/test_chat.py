@@ -46,7 +46,7 @@ async def test_ws_streams_tokens(client):
     from unittest.mock import AsyncMock, patch, MagicMock
     from app.core.database import AsyncSessionLocal as RealSession
 
-    async def fake_run_agent(message, model, api_key, tools, on_token):
+    async def fake_run_agent(message, model, api_key, tool_registry, on_token):
         await on_token("Hello ")
         await on_token("world")
         return "Hello world"
@@ -64,7 +64,14 @@ async def test_ws_streams_tokens(client):
         # Make Conversation().id work
         return mock_session
 
-    with patch("app.api.chat.run_agent", side_effect=fake_run_agent), \
+    mock_registry = MagicMock()
+    mock_registry.get_tools_for_user = AsyncMock(return_value={})
+    mock_google = MagicMock()
+    mock_google.is_connected = AsyncMock(return_value=False)
+    mock_registry.get = MagicMock(return_value=mock_google)
+
+    with patch("app.api.chat.run_agent_with_tools", side_effect=fake_run_agent), \
+         patch("app.api.chat.integration_registry", mock_registry), \
          patch("app.api.chat.AsyncSessionLocal") as mock_sl:
         mock_session = MagicMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)

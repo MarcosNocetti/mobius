@@ -10,7 +10,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.conversation import Conversation, Message
 from app.models.user import User as UserModel
 from app.agents.engine import run_agent_with_tools
-from app.agents.tools.registry import get_tools_for_user
+from app.integrations.registry import integration_registry
 
 logger = logging.getLogger("mobius.chat")
 
@@ -83,19 +83,16 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
                 await session.commit()
                 conv_id = conv.id
 
-            # Check Google connection status
+            # Build tools — registry only returns tools from connected integrations
+            tool_registry = await integration_registry.get_tools_for_user(user_id)
+
+            # Check Google connection status (for system prompt hint)
             google_connected = False
             try:
-                google_raw = await _redis.get(f"oauth:google:{user_id}")
-                google_connected = bool(google_raw)
+                google = integration_registry.get("google")
+                google_connected = await google.is_connected(user_id)
             except Exception:
                 pass
-
-            # Build tools — only include Google tools if connected
-            tool_registry = get_tools_for_user(user_id)
-            if not google_connected:
-                tool_registry = {k: v for k, v in tool_registry.items()
-                                 if k not in ("create_calendar_event", "send_gmail")}
 
             # Stream response
             full_response_parts = []
