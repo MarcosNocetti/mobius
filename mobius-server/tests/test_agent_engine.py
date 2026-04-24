@@ -15,6 +15,9 @@ async def test_run_agent_calls_on_token(monkeypatch):
         for chunk in fake_chunks:
             yield chunk
 
+    async def noop_token(t):
+        tokens.append(t)
+
     with patch("app.agents.engine.litellm.acompletion", return_value=fake_stream()):
         tokens = []
         await run_agent(
@@ -22,7 +25,7 @@ async def test_run_agent_calls_on_token(monkeypatch):
             model="gemini/gemini-2.0-flash",
             api_key=None,
             tools=[],
-            on_token=lambda t: tokens.append(t)
+            on_token=noop_token,
         )
         assert tokens == ["Hello ", "world"]
 
@@ -41,13 +44,16 @@ async def test_run_agent_uses_user_api_key(monkeypatch):
 
         return _gen()
 
+    async def noop_token(t):
+        pass
+
     with patch("app.agents.engine.litellm.acompletion", side_effect=fake_acompletion):
         await run_agent(
             message="hi",
             model="gemini/gemini-2.0-flash",
             api_key="user-key-123",
             tools=[],
-            on_token=lambda t: None
+            on_token=noop_token,
         )
     assert captured.get("api_key") == "user-key-123"
 
@@ -84,10 +90,17 @@ async def test_agent_calls_tool_when_needed():
             response.choices = [choice]
             return response
         else:
-            # Final streaming answer
-            async def stream():
-                yield MagicMock(choices=[MagicMock(delta=MagicMock(content="Paris."))])
-            return stream()
+            # Final answer (non-streaming for run_agent_with_tools)
+            choice = MagicMock()
+            choice.finish_reason = "stop"
+            choice.message.tool_calls = None
+            choice.message.content = "Paris."
+            response = MagicMock()
+            response.choices = [choice]
+            return response
+
+    async def noop_token(t):
+        tokens.append(t)
 
     with patch("app.agents.engine.litellm.acompletion", side_effect=fake_acompletion):
         tokens = []
@@ -95,9 +108,20 @@ async def test_agent_calls_tool_when_needed():
             message="What is the capital of France?",
             model="gemini/gemini-2.0-flash",
             api_key=None,
-            tools={"web_search": mock_web_search},
-            on_token=lambda t: tokens.append(t),
+            tool_registry={"web_search": {"fn": mock_web_search, "schema": {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Search the web",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                },
+            }}},
+            on_token=noop_token,
         )
     assert len(tool_called_with) >= 1
     assert "capital of France" in tool_called_with[0].lower() or "France" in tool_called_with[0]
-    assert "Paris" in "".join(tokens)
+    assert "Paris" in "".join(str(t) for t in tokens)

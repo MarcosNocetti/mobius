@@ -73,12 +73,15 @@ async def test_engine_uses_user_key(monkeypatch):
             yield mock
         return gen()
 
+    async def noop_token(t):
+        pass
+
     with patch("app.agents.engine.litellm.acompletion", side_effect=fake_acompletion):
         await run_agent(
             message="test",
             model="openai/gpt-4o",
             api_key="sk-user-key",
             tools=[],
-            on_token=lambda t: None,
+            on_token=noop_token,
         )
     assert captured_kwargs.get("api_key") == "sk-user-key"
