@@ -6,6 +6,7 @@ import 'features/auth/auth_provider.dart';
 import 'features/auth/login_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/integrations/integrations_screen.dart';
+import 'features/automations/automation_detail_screen.dart';
 import 'features/settings/settings_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -24,6 +25,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/chat', builder: (_, __) => const ChatScreen()),
       GoRoute(path: '/integrations', builder: (_, __) => const IntegrationsScreen()),
       GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
+      GoRoute(
+        path: '/automations/:id',
+        builder: (_, state) => AutomationDetailScreen(
+          automationId: state.pathParameters['id']!,
+        ),
+      ),
     ],
   );
 });

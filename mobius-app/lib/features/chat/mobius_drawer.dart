@@ -96,9 +96,9 @@ class MobiusDrawer extends ConsumerWidget {
                                     : Colors.grey,
                               ),
                               title: Text(
-                                auto.prompt.length > 30
-                                    ? '${auto.prompt.substring(0, 30)}...'
-                                    : auto.prompt,
+                                auto.name.length > 30
+                                    ? '${auto.name.substring(0, 30)}...'
+                                    : auto.name,
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 12),
                                 maxLines: 1,
@@ -109,6 +109,10 @@ class MobiusDrawer extends ConsumerWidget {
                                 style: const TextStyle(
                                     color: Colors.grey, fontSize: 10),
                               ),
+                              onTap: () {
+                                Navigator.pop(context);
+                                context.push('/automations/${auto.id}');
+                              },
                             )),
                         const Divider(color: Color(0xFF333333), height: 1),
                       ],

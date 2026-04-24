@@ -10,6 +10,13 @@ final automationsProvider =
   return data.map((e) => Automation.fromJson(e as Map<String, dynamic>)).toList();
 });
 
+final automationProvider =
+    FutureProvider.family<Automation, String>((ref, id) async {
+  final client = ref.watch(backendClientProvider);
+  final response = await client.get('/automations/$id');
+  return Automation.fromJson(response.data as Map<String, dynamic>);
+});
+
 final automationsNotifierProvider =
     AsyncNotifierProvider<AutomationsNotifier, List<Automation>>(
         AutomationsNotifier.new);
@@ -39,5 +46,20 @@ class AutomationsNotifier extends AsyncNotifier<List<Automation>> {
     final client = ref.read(backendClientProvider);
     await client.post('/automations/${automation.id}/toggle', data: {});
     ref.invalidateSelf();
+  }
+
+  Future<Automation> runAutomationNow(String id) async {
+    final client = ref.read(backendClientProvider);
+    final response = await client.post('/automations/$id/run');
+    ref.invalidateSelf();
+    return Automation.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<Automation> toggleAutomation(String id, String currentStatus) async {
+    final newStatus = currentStatus == 'active' ? 'paused' : 'active';
+    final client = ref.read(backendClientProvider);
+    final response = await client.patch('/automations/$id', data: {'status': newStatus});
+    ref.invalidateSelf();
+    return Automation.fromJson(response.data as Map<String, dynamic>);
   }
 }
