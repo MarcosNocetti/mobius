@@ -142,21 +142,23 @@ from fastapi.responses import FileResponse
 
 _static_dir = Path(__file__).parent.parent / "static"
 if _static_dir.exists():
-    # Serve static assets (JS, CSS, images, etc.)
-    app.mount("/assets", StaticFiles(directory=_static_dir / "assets"), name="assets")
-    app.mount("/canvaskit", StaticFiles(directory=_static_dir / "canvaskit"), name="canvaskit")
-    app.mount("/icons", StaticFiles(directory=_static_dir / "icons"), name="icons")
+    # Serve all Flutter static files under /app/
+    app.mount("/app/assets", StaticFiles(directory=_static_dir / "assets"), name="assets")
+    app.mount("/app/canvaskit", StaticFiles(directory=_static_dir / "canvaskit"), name="canvaskit")
+    app.mount("/app/icons", StaticFiles(directory=_static_dir / "icons"), name="icons")
 
-    # Serve Flutter's required files at root level
     for fname in ["flutter.js", "flutter_bootstrap.js", "flutter_service_worker.js",
                    "main.dart.js", "manifest.json", "favicon.png"]:
         fpath = _static_dir / fname
         if fpath.exists():
-            @app.get(f"/{fname}", include_in_schema=False)
+            @app.get(f"/app/{fname}", include_in_schema=False)
             async def serve_file(path=fpath):
                 return FileResponse(path)
 
-    # Catch-all: serve index.html for any non-API route (Flutter handles routing)
     @app.get("/app/{path:path}", include_in_schema=False)
     async def flutter_app(path: str = ""):
+        return FileResponse(_static_dir / "index.html")
+
+    @app.get("/app", include_in_schema=False)
+    async def flutter_app_root():
         return FileResponse(_static_dir / "index.html")
