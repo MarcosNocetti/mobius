@@ -22,23 +22,24 @@ _MODEL_MAP = {
     "gpt-4o": "openai/gpt-4o",
 }
 
-SYSTEM_PROMPT_TEMPLATE = """You are Mobius, a personal AI productivity assistant.
+SYSTEM_PROMPT_TEMPLATE = """You are Mobius, a powerful AI productivity assistant that EXECUTES real actions.
 Current date/time: {now}
 Timezone: America/Sao_Paulo (UTC-3)
 
-You can perform real actions for the user using your available tools:
-- create_calendar_event: Add events to Google Calendar
-- send_gmail: Send emails via Gmail
-- post_tweet: Post tweets on Twitter/X
-- create_notion_page: Create pages in Notion
+PERSONALITY:
+- You are confident and proactive. You DO things, you don't just describe them.
+- Never say "I can't" or "my capabilities are limited". If you have the tools, USE them.
+- If a tool fails, explain the error and suggest a fix — don't give up.
 
-IMPORTANT RULES:
-1. When the user asks to schedule, create events, send emails, or post — ALWAYS USE THE TOOLS immediately. Never just describe what you would do.
-2. For dates like "amanhã", "segunda", "próxima semana" — calculate the actual date using the current date above.
-3. Use ISO 8601 with timezone for datetimes (e.g. 2026-04-24T10:00:00-03:00).
-4. If the user gives multiple events, create ALL of them with separate tool calls.
-5. After executing, confirm exactly what you did.
-6. Respond in the same language the user writes in."""
+RULES:
+1. ALWAYS USE TOOLS when the user asks to do something actionable. Never just describe what you would do.
+2. For dates like "amanhã", "segunda", "próxima semana" — calculate the actual date from the current date above.
+3. Use ISO 8601 with timezone (e.g. 2026-04-24T10:00:00-03:00) for all datetimes.
+4. If the user asks for multiple actions, make multiple tool calls.
+5. After executing actions, confirm exactly what you did with details.
+6. Respond in the same language the user writes in.
+7. For automations: when the user wants recurring tasks, use create_automation to generate a Python script. The script uses ctx.tools.* (same tools you have) and ctx.ai.ask() for AI reasoning.
+8. If the user asks for something that requires a disconnected integration, tell them EXACTLY what to do: "Connect [service] by tapping this link: [url]". Be specific, not vague."""
 
 
 @router.websocket("/ws/chat")
@@ -139,16 +140,28 @@ async def ws_chat(websocket: WebSocket, token: str = Query(...)):
 
             try:
                 base_url = settings.BASE_URL or "http://localhost:8000"
-                connect_url = f"{base_url}/connect/google?user_id={user_id}"
-                google_note = (
-                    "Google Calendar and Gmail are CONNECTED and ready to use."
-                    if google_connected
-                    else f"Google is NOT connected. Tell user to connect: {connect_url}"
+
+                # Build dynamic integration status
+                integration_notes = []
+                for integ in integration_registry.get_all():
+                    connected = await integ.is_connected(user_id)
+                    if connected:
+                        integration_notes.append(f"✅ {integ.display_name}: CONNECTED")
+                    else:
+                        url = f"{base_url}/connect/{integ.name}?user_id={user_id}"
+                        integration_notes.append(f"❌ {integ.display_name}: NOT connected → {url}")
+
+                # List available tools dynamically
+                tool_list = "\n".join(
+                    f"- {name}: {t['schema']['function']['description']}"
+                    for name, t in tool_registry.items()
                 )
+
                 system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
                     now=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 )
-                full_system = f"{system_prompt}\n\nGoogle status: {google_note}"
+                integrations_status = "\n".join(integration_notes)
+                full_system = f"{system_prompt}\n\nYour available tools:\n{tool_list}\n\nIntegration status:\n{integrations_status}"
 
                 # Build full message with conversation history
                 if len(history_messages) > 1:

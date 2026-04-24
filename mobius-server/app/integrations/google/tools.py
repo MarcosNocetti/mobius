@@ -426,3 +426,91 @@ Return ONLY the JSON array, no explanation. Example: [{{"id":"abc123","label":"N
 
     summary = "\n".join(results)
     return f"Organizei {len(categories)} emails em {len(label_groups)} pastas:\n{summary}"
+
+
+# ===== Gmail Filters =====
+
+@tool_action(
+    name="create_gmail_filter",
+    description="Create a Gmail filter that automatically applies a label to incoming emails matching criteria (from, to, subject, has words, etc).",
+    integration="google",
+    params={
+        "from_address": {"type": "string", "description": "Filter emails FROM this address (optional)"},
+        "to_address": {"type": "string", "description": "Filter emails TO this address (optional)"},
+        "subject": {"type": "string", "description": "Filter by subject contains (optional)"},
+        "query": {"type": "string", "description": "Gmail search query for advanced matching (optional)"},
+        "label_name": {"type": "string", "description": "Label to apply (will create if not exists)"},
+        "archive": {"type": "boolean", "description": "Skip inbox (archive) matching emails (default: false)"},
+    },
+)
+async def create_gmail_filter(user_id: str, label_name: str, from_address: str = "", to_address: str = "",
+                               subject: str = "", query: str = "", archive: bool = False) -> str:
+    # Find or create the label
+    labels_resp = await _google().api_request("get", f"{GMAIL_API}/labels", user_id)
+    labels = labels_resp.json().get("labels", [])
+    target = next((l for l in labels if l["name"].lower() == label_name.lower()), None)
+
+    if not target:
+        create_resp = await _google().api_request("post", f"{GMAIL_API}/labels", user_id, json={
+            "name": label_name, "labelListVisibility": "labelShow", "messageListVisibility": "show",
+        })
+        target = create_resp.json()
+
+    # Build filter criteria
+    criteria = {}
+    if from_address:
+        criteria["from"] = from_address
+    if to_address:
+        criteria["to"] = to_address
+    if subject:
+        criteria["subject"] = subject
+    if query:
+        criteria["query"] = query
+
+    if not criteria:
+        return "Error: at least one filter criteria is required (from, to, subject, or query)"
+
+    # Build actions
+    action = {"addLabelIds": [target["id"]]}
+    if archive:
+        action["removeLabelIds"] = ["INBOX"]
+
+    # Create filter
+    resp = await _google().api_request("post", f"{GMAIL_API}/settings/filters", user_id, json={
+        "criteria": criteria,
+        "action": action,
+    })
+    filter_data = resp.json()
+    return f"Filtro criado (ID: {filter_data.get('id', '?')}): emails {criteria} → label '{label_name}'" + (" (arquivar)" if archive else "")
+
+
+@tool_action(
+    name="list_gmail_filters",
+    description="List all Gmail filters configured for the user.",
+    integration="google",
+    params={},
+)
+async def list_gmail_filters(user_id: str) -> str:
+    resp = await _google().api_request("get", f"{GMAIL_API}/settings/filters", user_id)
+    filters = resp.json().get("filter", [])
+    if not filters:
+        return "Nenhum filtro configurado"
+
+    # Get labels for name resolution
+    labels_resp = await _google().api_request("get", f"{GMAIL_API}/labels", user_id)
+    label_map = {l["id"]: l["name"] for l in labels_resp.json().get("labels", [])}
+
+    lines = []
+    for f in filters:
+        criteria = f.get("criteria", {})
+        action = f.get("action", {})
+        criteria_parts = []
+        if "from" in criteria: criteria_parts.append(f"from:{criteria['from']}")
+        if "to" in criteria: criteria_parts.append(f"to:{criteria['to']}")
+        if "subject" in criteria: criteria_parts.append(f"subject:{criteria['subject']}")
+        if "query" in criteria: criteria_parts.append(f"query:{criteria['query']}")
+
+        labels = [label_map.get(lid, lid) for lid in action.get("addLabelIds", [])]
+        lines.append(f"- {' '.join(criteria_parts)} → {', '.join(labels)}")
+
+    return "\n".join(lines)
