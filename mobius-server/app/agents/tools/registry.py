@@ -3,14 +3,14 @@ Tool registry — maps tool names to (function, JSON schema) pairs.
 Each tool function receives user_id as first arg (injected by engine),
 plus whatever args the LLM provides.
 """
-from app.integrations.google import (
+from app.integrations.google.tools import (
     create_calendar_event, list_calendar_events,
     send_gmail, read_gmail,
     create_google_doc, create_spreadsheet,
     list_drive_files, create_task, list_tasks,
 )
-from app.integrations.twitter import post_tweet
-from app.integrations.notion import create_notion_page
+from app.integrations.twitter.tools import post_tweet
+from app.integrations.notion.tools import create_notion_page
 
 
 def _tool(name: str, desc: str, fn, params: dict) -> dict:

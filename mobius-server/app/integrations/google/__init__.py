@@ -1,4 +1,10 @@
+import json
+
+from fastapi import APIRouter
+from fastapi.responses import RedirectResponse, HTMLResponse
+
 from app.core.config import settings
+from app.core.redis import redis_client
 from app.integrations.base import IntegrationBase
 from urllib.parse import urlencode
 
@@ -40,3 +46,27 @@ class GoogleIntegration(IntegrationBase):
             "state": user_id,
         }
         return f"{self.auth_url}?{urlencode(params)}"
+
+
+# ---- Legacy FastAPI router (kept for backward compat until Task 6) ----
+
+router = APIRouter(prefix="/integrations/google", tags=["google"])
+
+_integration = GoogleIntegration()
+
+
+@router.get("/authorize")
+async def google_authorize(user_id: str):
+    url = _integration.get_authorize_url(user_id, settings.BASE_URL)
+    return RedirectResponse(url)
+
+
+@router.get("/callback")
+async def google_callback(code: str, state: str):
+    await _integration.handle_callback(code, state, settings.BASE_URL)
+    html = """<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>body{background:#0a0a1a;color:#e0e0e0;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
+    .card{text-align:center;background:#1a1a2e;padding:3rem;border-radius:16px;border:2px solid #4ade80}
+    h1{color:#4ade80;font-size:2rem}p{color:#bbb;margin-top:1rem}</style></head>
+    <body><div class="card"><h1>Google conectado!</h1><p>Pode fechar esta aba e voltar ao chat.</p></div></body></html>"""
+    return HTMLResponse(content=html)
